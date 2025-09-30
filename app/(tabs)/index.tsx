@@ -1,98 +1,61 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { generateAPIUrl } from '@/app/utils/utils';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+import { fetch as expoFetch } from 'expo/fetch';
+import { useState } from 'react';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function App() {
+  const [input, setInput] = useState('');
+  const { messages, error, sendMessage } = useChat({
+    transport: new DefaultChatTransport({
+      fetch: expoFetch as unknown as typeof globalThis.fetch,
+      api: generateAPIUrl('/api/chat'),
+    }),
+    onError: error => console.error(error, 'ERROR'),
+  });
 
-export default function HomeScreen() {
+  if (error) return <Text>{error.message}</Text>;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+      <View
+        style={{
+          height: '95%',
+          display: 'flex',
+          flexDirection: 'column',
+          paddingHorizontal: 8,
+        }}
+      >
+        <ScrollView style={{ flex: 1 }}>
+          {messages.map(m => (
+            <View key={m.id} style={{ marginVertical: 8 }}>
+              <View>
+                <Text style={{ fontWeight: 700 }}>{m.role}</Text>
+                {m.parts.map((part, i) => {
+                  switch (part.type) {
+                    case 'text':
+                      return <Text key={`${m.id}-${i}`}>{part.text}</Text>;
+                  }
+                })}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={{ marginTop: 8 }}>
+          <TextInput
+            style={{ backgroundColor: 'white', padding: 8 }}
+            placeholder="Say something..."
+            value={input}
+            onChange={e => setInput(e.nativeEvent.text)}
+            onSubmitEditing={e => {
+              e.preventDefault();
+              sendMessage({ text: input });
+              setInput('');
+            }}
+            autoFocus={true}
+          />
+        </View>
+      </View>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
