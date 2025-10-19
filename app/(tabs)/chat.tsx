@@ -34,9 +34,9 @@ export default function Chat() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [userMessageMap, setUserMessageMap] = useState<{[key: string]: string}>({});
   const [eventAddedMessages, setEventAddedMessages] = useState<Set<string>>(new Set());
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -90,6 +90,7 @@ export default function Chat() {
       keyboardDidHideListener?.remove();
     };
   }, []);
+
 
   // Watch for new assistant messages and check for event data
   useEffect(() => {
@@ -308,7 +309,7 @@ export default function Chat() {
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : -20}
     >
       <ScrollView 
         ref={scrollViewRef}
@@ -360,7 +361,7 @@ export default function Chat() {
         ))}
       </ScrollView>
 
-      <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 20 : 100 }]}>
+      <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 40 : 100 }]}>
         {isTranscribing && (
           <View style={styles.transcribingIndicator}>
             <ActivityIndicator size="small" color="#007AFF" />
