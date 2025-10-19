@@ -2,12 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import {
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 interface CalendarEvent {
@@ -29,7 +29,7 @@ export default function Calendar() {
   });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
   // Calendar cell colors using the new specified color codes
   const dayColors = [
@@ -67,8 +67,10 @@ export default function Calendar() {
   };
 
   const formatDate = (date: Date) => {
-    const dayName = dayNames[date.getDay()].substring(0, 3).toUpperCase();
-    return dayName;
+    const dayName = dayNames[date.getDay()];
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    return { dayName, month, day };
   };
 
   const isToday = (date: Date) => {
@@ -192,11 +194,11 @@ export default function Calendar() {
                 <View style={styles.dateHeader}>
                   {isToday(date) && <Ionicons name="star" size={16} color="#000000" style={styles.starIcon} />}
                   <Text style={[styles.dayName, styles.whiteText]}>
-                    {dayNames[index]}
+                    {formatDate(date).dayName}
                   </Text>
                 </View>
                 <Text style={[styles.dayDate, styles.whiteText]}>
-                  {formatDate(date)}
+                  {formatDate(date).month} {formatDate(date).day}
                 </Text>
               </View>
               
