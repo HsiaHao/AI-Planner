@@ -289,8 +289,21 @@ export default function Chat() {
       const transcribedText = data.text;
       
       if (transcribedText) {
-        setInput(transcribedText);
-        Alert.alert('Success', 'Voice message transcribed successfully!');
+        // Automatically send the transcribed message
+        const userInput = transcribedText.trim();
+        
+        // Create enhanced prompt for ChatGPT
+        const today = new Date();
+        const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
+        
+        // Send the enhanced prompt to ChatGPT
+        sendMessage({ text: enhancedPrompt });
+        
+        // Store the original user input to display instead of the enhanced prompt
+        setUserMessageMap(prev => ({ ...prev, [enhancedPrompt]: userInput }));
+        
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
       } else {
         Alert.alert('Warning', 'No text was transcribed from the audio.');
       }
@@ -311,6 +324,19 @@ export default function Chat() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : -20}
     >
+      {/* Recording Overlay */}
+      {isRecording && (
+        <View style={styles.recordingOverlay}>
+          <View style={styles.recordingView}>
+            <View style={styles.recordingIcon}>
+              <Ionicons name="mic" size={40} color="#FF3B30" />
+            </View>
+            <Text style={styles.recordingText}>Recording...</Text>
+            <Text style={styles.recordingSubtext}>Release to stop</Text>
+          </View>
+        </View>
+      )}
+
       <ScrollView 
         ref={scrollViewRef}
         style={styles.messagesContainer}
@@ -541,5 +567,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 20,
     fontSize: 16,
+  },
+  recordingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  recordingView: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    minWidth: 200,
+  },
+  recordingIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFE5E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  recordingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FF3B30',
+    marginBottom: 4,
+  },
+  recordingSubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
 });

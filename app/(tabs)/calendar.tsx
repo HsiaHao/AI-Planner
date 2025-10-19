@@ -267,6 +267,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#E4E3DA',
+    paddingBottom: 80, // Account for floating tab bar (60px height + 20px margin)
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
