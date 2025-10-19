@@ -193,12 +193,15 @@ export default function Calendar() {
               <View style={styles.dateColumn}>
                 <View style={styles.dateHeader}>
                   {isToday(date) && <Ionicons name="star" size={16} color="#000000" style={styles.starIcon} />}
-                  <Text style={[styles.dayName, styles.whiteText]}>
-                    {formatDate(date).dayName}
-                  </Text>
                 </View>
+                <Text style={[styles.dayName, styles.whiteText]}>
+                  {formatDate(date).dayName}
+                </Text>
                 <Text style={[styles.dayDate, styles.whiteText]}>
-                  {formatDate(date).month} {formatDate(date).day}
+                  {formatDate(date).day}
+                </Text>
+                <Text style={[styles.monthText, styles.whiteText]}>
+                  {formatDate(date).month}
                 </Text>
               </View>
               
@@ -338,7 +341,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   dateColumn: {
-    flex: 1,
+    width: 50, // Narrower width
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 8,
@@ -354,6 +357,10 @@ const styles = StyleSheet.create({
   dayName: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  monthText: {
+    fontSize: 12,
     color: '#FFFFFF',
   },
   dayDate: {
