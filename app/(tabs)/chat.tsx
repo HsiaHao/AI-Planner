@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -33,6 +34,7 @@ export default function Chat() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -57,6 +59,27 @@ export default function Chat() {
   // Load events from storage on component mount
   useEffect(() => {
     loadEventsFromStorage();
+  }, []);
+
+  // Handle keyboard events
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
   }, []);
 
   const loadEventsFromStorage = async () => {
@@ -237,7 +260,7 @@ export default function Chat() {
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <ScrollView 
         ref={scrollViewRef}
@@ -280,7 +303,7 @@ export default function Chat() {
         ))}
       </ScrollView>
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 20 : 100 }]}>
         {isTranscribing && (
           <View style={styles.transcribingIndicator}>
             <ActivityIndicator size="small" color="#007AFF" />
@@ -412,7 +435,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#E0E0E0',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 100 : 100, // Account for floating tab bar (60px height + 20px margin + extra padding)
   },
   transcribingIndicator: {
     flexDirection: 'row',
