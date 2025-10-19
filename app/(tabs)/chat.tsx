@@ -58,8 +58,8 @@ export default function Chat() {
         const jsonMatch = textContent.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
         if (jsonMatch) {
           // Mark this message as having an event added
-          setEventAddedMessages(prev => new Set([...prev, message.id]));
-          parseAndStoreEvent(textContent, message.id);
+          setEventAddedMessages(prev => new Set([...prev, message.message.id]));
+          parseAndStoreEvent(textContent, message.message.id);
         }
       }
     },
@@ -107,7 +107,7 @@ export default function Chat() {
         }
       }
     }
-  }, [messages, eventAddedMessages]);
+  }, [messages]); // Removed eventAddedMessages from dependency array to prevent infinite loop
 
   const loadEventsFromStorage = async () => {
     try {
@@ -174,8 +174,6 @@ export default function Chat() {
       sendMessage({ text: enhancedPrompt });
       
       // Store the original user input to display instead of the enhanced prompt
-      console.log('Storing mapping - Enhanced prompt:', enhancedPrompt);
-      console.log('Storing mapping - Original message:', userInput);
       setUserMessageMap(prev => ({ ...prev, [enhancedPrompt]: userInput }));
       
       setInput('');
@@ -328,9 +326,6 @@ export default function Chat() {
                       >
                         {m.role === 'user' ? (() => {
                           const originalMessage = userMessageMap[part.text];
-                          console.log('Looking for message:', part.text);
-                          console.log('Found original:', originalMessage);
-                          console.log('UserMessageMap keys:', Object.keys(userMessageMap));
                           return originalMessage || part.text;
                         })() : (() => {
                           // Check if this specific message had an event added
