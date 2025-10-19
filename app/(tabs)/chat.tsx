@@ -1,26 +1,38 @@
-import { generateAPIUrl } from '@/app/utils/utils';
+import { generateAPIUrl } from '@/utils';
 import { useChat } from '@ai-sdk/react';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DefaultChatTransport } from 'ai';
+import { Audio } from 'expo-av';
 import { fetch as expoFetch } from 'expo/fetch';
-import { useState, useRef } from 'react';
-import { 
-  ScrollView, 
-  Text, 
-  TextInput, 
-  View, 
-  TouchableOpacity, 
-  StyleSheet, 
+import { useEffect, useRef, useState } from 'react';
+import {
   ActivityIndicator,
   Alert,
-  Platform 
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
-export default function App() {
+interface CalendarEvent {
+  id: string;
+  event: string;
+  time: string;
+  priority: 'low' | 'medium' | 'high';
+  date: string;
+  timestamp: number;
+}
+
+export default function Chat() {
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -30,11 +42,86 @@ export default function App() {
       api: generateAPIUrl('/api/chat'),
     }),
     onError: error => console.error(error, 'ERROR'),
+    onFinish: (message) => {
+      // Check if the message contains event information and parse it
+      if (message.message && message.message.parts && message.message.parts.length > 0) {
+        const textContent = message.message.parts
+          .filter((part: any) => part.type === 'text')
+          .map((part: any) => part.text)
+          .join(' ');
+        parseAndStoreEvent(textContent);
+      }
+    },
   });
+
+  // Load events from storage on component mount
+  useEffect(() => {
+    loadEventsFromStorage();
+  }, []);
+
+  const loadEventsFromStorage = async () => {
+    try {
+      const storedEvents = await AsyncStorage.getItem('calendarEvents');
+      if (storedEvents) {
+        setEvents(JSON.parse(storedEvents));
+      }
+    } catch (error) {
+      console.error('Error loading events from storage:', error);
+    }
+  };
+
+  const saveEventsToStorage = async (newEvents: CalendarEvent[]) => {
+    try {
+      await AsyncStorage.setItem('calendarEvents', JSON.stringify(newEvents));
+    } catch (error) {
+      console.error('Error saving events to storage:', error);
+    }
+  };
+
+  const parseAndStoreEvent = (content: string) => {
+    try {
+      // Look for JSON format in the response
+      const jsonMatch = content.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const eventData = JSON.parse(jsonMatch[0]);
+        
+        if (eventData.Event && eventData.Time && eventData.Priority && eventData.Date) {
+          const newEvent: CalendarEvent = {
+            id: Date.now().toString(),
+            event: eventData.Event,
+            time: eventData.Time,
+            priority: eventData.Priority.toLowerCase() || 'low',
+            date: eventData.Date, // Use the date from ChatGPT response
+            timestamp: Date.now(),
+          };
+
+          // console.log('New event created:', newEvent);
+          const updatedEvents = [...events, newEvent];
+          // console.log('All events after adding:', updatedEvents);
+          saveEventsToStorage(updatedEvents);
+          
+          Alert.alert(
+            'Event Added!', 
+            `Event "${newEvent.event}" at ${newEvent.time} on ${newEvent.date} has been added to your calendar.`,
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing event data:', error);
+    }
+  };
+
 
   const handleSend = () => {
     if (input.trim()) {
-      sendMessage({ text: input });
+      // Always treat input as potential event - let ChatGPT decide how to respond
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const messageToSend = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${input}`;
+      
+      sendMessage({ text: messageToSend });
       setInput('');
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
@@ -137,7 +224,8 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to transcribe audio', err);
-      Alert.alert('Error', `Failed to transcribe audio: ${err.message}. Please try again or type your message.`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      Alert.alert('Error', `Failed to transcribe audio: ${errorMessage}. Please try again or type your message.`);
     } finally {
       setIsTranscribing(false);
     }
@@ -146,11 +234,11 @@ export default function App() {
   if (error) return <Text style={styles.error}>{error.message}</Text>;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>AI Chat Assistant</Text>
-      </View>
-
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
       <ScrollView 
         ref={scrollViewRef}
         style={styles.messagesContainer}
@@ -201,22 +289,9 @@ export default function App() {
         )}
         
         <View style={styles.inputRow}>
-          <TouchableOpacity
-            style={[styles.recordButton, isRecording && styles.recordingActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
-            disabled={isTranscribing}
-          >
-            <Ionicons 
-              name={isRecording ? "mic" : "mic-outline"} 
-              size={24} 
-              color={isRecording ? "#FF3B30" : "#007AFF"} 
-            />
-          </TouchableOpacity>
-
           <TextInput
             style={styles.textInput}
-            placeholder="Type a message or hold mic to record..."
+            placeholder="Type a message or hold button to record..."
             placeholderTextColor="#999"
             value={input}
             onChangeText={setInput}
@@ -227,32 +302,50 @@ export default function App() {
           />
 
           <TouchableOpacity
-            style={[styles.sendButton, !input.trim() && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!input.trim() || isTranscribing}
+            style={[
+              styles.smartButton, 
+              isRecording && styles.recordingActive,
+              !input.trim() && styles.recordButtonState
+            ]}
+            onPress={input.trim() ? handleSend : undefined}
+            onPressIn={!input.trim() ? startRecording : undefined}
+            onPressOut={!input.trim() ? stopRecording : undefined}
+            disabled={isTranscribing}
           >
             <Ionicons 
-              name="send" 
-              size={20} 
-              color={input.trim() ? "#007AFF" : "#CCC"} 
+              name={
+                isRecording 
+                  ? "mic" 
+                  : input.trim() 
+                    ? "send" 
+                    : "mic-outline"
+              } 
+              size={24} 
+              color={
+                isRecording 
+                  ? "#FF3B30" 
+                  : input.trim() 
+                    ? "#007AFF" 
+                    : "#007AFF"
+              } 
             />
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#E4E3DA',
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     paddingBottom: 15,
     paddingHorizontal: 16,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#E4E3DA',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
@@ -264,9 +357,10 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
   },
   messagesContent: {
-    padding: 16,
+    padding: 8,
     paddingBottom: 8,
   },
   messageRow: {
@@ -313,12 +407,12 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   inputContainer: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#E4E3DA',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 100 : 100, // Account for floating tab bar (60px height + 20px margin + extra padding)
   },
   transcribingIndicator: {
     flexDirection: 'row',
@@ -337,16 +431,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  recordButton: {
+  smartButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#E4E3DA',
     justifyContent: 'center',
     alignItems: 'center',
   },
   recordingActive: {
     backgroundColor: '#FFE5E5',
+  },
+  recordButtonState: {
+    backgroundColor: '#E4E3DA',
   },
   textInput: {
     flex: 1,
@@ -358,17 +455,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: '#000',
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F0F0F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
   },
   error: {
     color: '#FF3B30',
