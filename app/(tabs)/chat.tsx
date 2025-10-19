@@ -35,6 +35,8 @@ export default function Chat() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [userMessageMap, setUserMessageMap] = useState<{[key: string]: string}>({});
+  const [eventAddedMessages, setEventAddedMessages] = useState<Set<string>>(new Set());
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -51,7 +53,14 @@ export default function Chat() {
           .filter((part: any) => part.type === 'text')
           .map((part: any) => part.text)
           .join(' ');
-        parseAndStoreEvent(textContent);
+        
+        // Check if this response contains event data
+        const jsonMatch = textContent.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
+        if (jsonMatch) {
+          // Mark this message as having an event added
+          setEventAddedMessages(prev => new Set([...prev, message.id]));
+          parseAndStoreEvent(textContent, message.id);
+        }
       }
     },
   });
@@ -82,6 +91,24 @@ export default function Chat() {
     };
   }, []);
 
+  // Watch for new assistant messages and check for event data
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant' && !eventAddedMessages.has(lastMessage.id)) {
+        const textContent = lastMessage.parts
+          .filter((part: any) => part.type === 'text')
+          .map((part: any) => part.text)
+          .join(' ');
+        
+        const jsonMatch = textContent.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
+        if (jsonMatch) {
+          setEventAddedMessages(prev => new Set([...prev, lastMessage.id]));
+        }
+      }
+    }
+  }, [messages, eventAddedMessages]);
+
   const loadEventsFromStorage = async () => {
     try {
       const storedEvents = await AsyncStorage.getItem('calendarEvents');
@@ -101,7 +128,7 @@ export default function Chat() {
     }
   };
 
-  const parseAndStoreEvent = (content: string) => {
+  const parseAndStoreEvent = (content: string, messageId: string) => {
     try {
       // Look for JSON format in the response
       const jsonMatch = content.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
@@ -124,11 +151,7 @@ export default function Chat() {
           // console.log('All events after adding:', updatedEvents);
           saveEventsToStorage(updatedEvents);
           
-          Alert.alert(
-            'Event Added!', 
-            `Event "${newEvent.event}" at ${newEvent.time} on ${newEvent.date} has been added to your calendar.`,
-            [{ text: 'OK' }]
-          );
+          // Message ID is already tracked in onFinish callback
         }
       }
     } catch (error) {
@@ -137,14 +160,24 @@ export default function Chat() {
   };
 
 
+
   const handleSend = () => {
     if (input.trim()) {
-      // Always treat input as potential event - let ChatGPT decide how to respond
+      const userInput = input.trim();
+      
+      // Create enhanced prompt for ChatGPT
       const today = new Date();
       const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-      const messageToSend = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${input}`;
+      const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
       
-      sendMessage({ text: messageToSend });
+      // Send the enhanced prompt to ChatGPT
+      sendMessage({ text: enhancedPrompt });
+      
+      // Store the original user input to display instead of the enhanced prompt
+      console.log('Storing mapping - Enhanced prompt:', enhancedPrompt);
+      console.log('Storing mapping - Original message:', userInput);
+      setUserMessageMap(prev => ({ ...prev, [enhancedPrompt]: userInput }));
+      
       setInput('');
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
@@ -293,7 +326,19 @@ export default function Chat() {
                           m.role === 'user' ? styles.userMessageText : styles.assistantMessageText
                         ]}
                       >
-                        {part.text}
+                        {m.role === 'user' ? (() => {
+                          const originalMessage = userMessageMap[part.text];
+                          console.log('Looking for message:', part.text);
+                          console.log('Found original:', originalMessage);
+                          console.log('UserMessageMap keys:', Object.keys(userMessageMap));
+                          return originalMessage || part.text;
+                        })() : (() => {
+                          // Check if this specific message had an event added
+                          if (m.role === 'assistant' && eventAddedMessages.has(m.id)) {
+                            return "Event added! Please check your calendar.";
+                          }
+                          return part.text;
+                        })()}
                       </Text>
                     );
                 }
