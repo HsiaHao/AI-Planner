@@ -128,6 +128,25 @@ export default function Chat() {
     }
   };
 
+  const addEventsToStorage = async (eventsToAdd: CalendarEvent[]) => {
+    try {
+      // Get existing events from storage
+      const existingEventsString = await AsyncStorage.getItem('calendarEvents');
+      const existingEvents = existingEventsString ? JSON.parse(existingEventsString) : [];
+      
+      // Combine existing events with new events
+      const allEvents = [...existingEvents, ...eventsToAdd];
+      
+      // Save the combined events
+      await AsyncStorage.setItem('calendarEvents', JSON.stringify(allEvents));
+      
+      // Update the local state
+      setEvents(allEvents);
+    } catch (error) {
+      console.error('Error adding events to storage:', error);
+    }
+  };
+
   const parseAndStoreEvent = (content: string, messageId: string) => {
     try {
       // Look for JSON format in the response
@@ -147,9 +166,7 @@ export default function Chat() {
           };
 
           // console.log('New event created:', newEvent);
-          const updatedEvents = [...events, newEvent];
-          // console.log('All events after adding:', updatedEvents);
-          saveEventsToStorage(updatedEvents);
+          addEventsToStorage([newEvent]);
           
           // Message ID is already tracked in onFinish callback
         }
