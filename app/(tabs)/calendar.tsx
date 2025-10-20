@@ -31,6 +31,7 @@ export default function Calendar() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -82,9 +83,31 @@ export default function Calendar() {
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
-    const newWeekStart = new Date(currentWeekStart);
-    newWeekStart.setDate(currentWeekStart.getDate() + (direction === 'next' ? 7 : -7));
-    setCurrentWeekStart(newWeekStart);
+    // Only animate if we're in week view
+    if (viewMode === 'week') {
+      // Set initial slide position based on direction
+      // Right button (next): slide from right to left (start at +300, end at 0)
+      // Left button (prev): slide from left to right (start at -300, end at 0)
+      const slideDistance = direction === 'next' ? 300 : -300;
+      slideAnim.setValue(slideDistance);
+      
+      // Update the week
+      const newWeekStart = new Date(currentWeekStart);
+      newWeekStart.setDate(currentWeekStart.getDate() + (direction === 'next' ? 7 : -7));
+      setCurrentWeekStart(newWeekStart);
+      
+      // Animate slide to center
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      // For other views, just update without animation
+      const newWeekStart = new Date(currentWeekStart);
+      newWeekStart.setDate(currentWeekStart.getDate() + (direction === 'next' ? 7 : -7));
+      setCurrentWeekStart(newWeekStart);
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -241,8 +264,9 @@ export default function Calendar() {
             </Text>
           </View>
         ) : (
-          <ScrollView style={styles.calendarContainer}>
-          {weekDates.map((date, index) => (
+          <Animated.View style={[styles.calendarContainer, { transform: [{ translateX: slideAnim }] }]}>
+            <ScrollView style={{ flex: 1 }}>
+            {weekDates.map((date, index) => (
           <View 
             key={index} 
             style={[
@@ -323,7 +347,8 @@ export default function Calendar() {
             </View>
           </View>
         ))}
-        </ScrollView>
+            </ScrollView>
+          </Animated.View>
         )}
       </Animated.View>
     </View>
