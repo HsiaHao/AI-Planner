@@ -202,11 +202,11 @@ export default function Calendar() {
       {/* View Mode Navigation */}
       <View style={styles.viewModeNav}>
         <TouchableOpacity 
-          style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
-          onPress={() => handleViewModeChange('month')}
+          style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
+          onPress={() => handleViewModeChange('day')}
         >
-          <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>
-            Month
+          <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>
+            Day
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
@@ -218,11 +218,11 @@ export default function Calendar() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
-          onPress={() => handleViewModeChange('day')}
+          style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
+          onPress={() => handleViewModeChange('month')}
         >
-          <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>
-            Day
+          <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>
+            Month
           </Text>
         </TouchableOpacity>
       </View>
