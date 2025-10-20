@@ -197,6 +197,31 @@ export default function Calendar() {
     return `rgb(${newR}, ${newG}, ${newB})`;
   };
 
+  // Find the nearest event to current time
+  const getNearestEventTime = () => {
+    const now = new Date();
+    const currentTime = now.getHours() * 100 + now.getMinutes(); // Convert to HHMM format
+    
+    const todayEvents = getEventsForDate(new Date());
+    if (todayEvents.length === 0) return null;
+    
+    // Sort events by time and find the nearest upcoming event
+    const sortedEvents = todayEvents.sort((a, b) => {
+      const timeA = parseInt(a.time.replace(':', ''));
+      const timeB = parseInt(b.time.replace(':', ''));
+      return timeA - timeB;
+    });
+    
+    // Find the next upcoming event
+    const upcomingEvent = sortedEvents.find(event => {
+      const eventTime = parseInt(event.time.replace(':', ''));
+      return eventTime >= currentTime;
+    });
+    
+    // If no upcoming event, return the last event of the day
+    return upcomingEvent ? upcomingEvent.time : sortedEvents[sortedEvents.length - 1].time;
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.weekNavigation}>
@@ -256,6 +281,38 @@ export default function Calendar() {
             <Text style={styles.dayViewTitle}>
               {formatDate(new Date()).dayName} {formatDate(new Date()).day} {formatDate(new Date()).month}
             </Text>
+            <ScrollView style={styles.dayEventsContainer}>
+              {getEventsForDate(new Date()).length > 0 ? (
+                getEventsForDate(new Date())
+                  .sort((a, b) => {
+                    // Convert time strings to comparable format (HH:MM)
+                    const timeA = a.time.replace(':', '');
+                    const timeB = b.time.replace(':', '');
+                    return parseInt(timeA) - parseInt(timeB);
+                  })
+                  .map((event) => {
+                    const nearestEventTime = getNearestEventTime();
+                    const isNearestEvent = nearestEventTime === event.time;
+                    
+                    return (
+                    <View key={event.id} style={styles.dayEventItem}>
+                      <View style={styles.dayEventTime}>
+                        {isNearestEvent && <View style={styles.nearestEventCircle} />}
+                        <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                      </View>
+                    <View style={styles.dayEventContent}>
+                      <Text style={styles.dayEventTitle}>{event.event}</Text>
+                      <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
+                    </View>
+                  </View>
+                    );
+                  })
+              ) : (
+                <View style={styles.noEventsContainer}>
+                  <Text style={styles.noEventsText}>No events scheduled for today</Text>
+                </View>
+              )}
+            </ScrollView>
           </View>
         ) : viewMode === 'month' ? (
           <View style={styles.monthViewContainer}>
@@ -450,6 +507,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000000',
     textAlign: 'left',
+  },
+  dayEventsContainer: {
+    flex: 1,
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  dayEventItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dayEventTime: {
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    position: 'relative',
+  },
+  nearestEventCircle: {
+    position: 'absolute',
+    width: 80,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#9DC8B9',
+    zIndex: 0,
+    top: '50%',
+    left: '50%',
+    marginTop: -15,
+    marginLeft: -40,
+  },
+  dayEventTimeText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'center',
+    zIndex: 1,
+    position: 'relative',
+  },
+  dayEventContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  dayEventTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  dayEventPriority: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  noEventsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noEventsText: {
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center',
   },
   monthViewContainer: {
     flex: 1,
