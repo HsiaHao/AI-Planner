@@ -190,6 +190,7 @@ export default function Calendar() {
             <View style={styles.calendarRow}>
               {/* Date Column */}
               <View style={styles.dateColumn}>
+                {isToday(date) && <View style={styles.todayCircle} />}
                 <View style={styles.dateHeader}>
                 </View>
                 <Text style={[styles.dayName, styles.whiteText]}>
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   todayButton: {
-    backgroundColor: '#E4E3DA',
+    backgroundColor: '#9DC8B9',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -339,10 +340,19 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   dateColumn: {
-    width: 50, // Narrower width
+    width: 60, // Wider width
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 8,
+    position: 'relative',
+  },
+  todayCircle: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#9DC8B9',
+    zIndex: -1,
   },
   dateHeader: {
     flexDirection: 'row',
