@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Platform,
   ScrollView,
   StyleSheet,
@@ -29,6 +30,7 @@ export default function Calendar() {
   });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -59,6 +61,24 @@ export default function Calendar() {
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - dayOfWeek);
     setCurrentWeekStart(startOfWeek);
+  };
+
+  const handleViewModeChange = (newViewMode: 'month' | 'week' | 'day') => {
+    // Fade out animation
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      // Change view mode
+      setViewMode(newViewMode);
+      // Fade in animation
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
@@ -183,7 +203,7 @@ export default function Calendar() {
       <View style={styles.viewModeNav}>
         <TouchableOpacity 
           style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
-          onPress={() => setViewMode('month')}
+          onPress={() => handleViewModeChange('month')}
         >
           <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>
             Month
@@ -191,7 +211,7 @@ export default function Calendar() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.viewModeButton, viewMode === 'week' && styles.viewModeButtonActive]}
-          onPress={() => setViewMode('week')}
+          onPress={() => handleViewModeChange('week')}
         >
           <Text style={[styles.viewModeText, viewMode === 'week' && styles.viewModeTextActive]}>
             Week
@@ -199,7 +219,7 @@ export default function Calendar() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
-          onPress={() => setViewMode('day')}
+          onPress={() => handleViewModeChange('day')}
         >
           <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>
             Day
@@ -207,14 +227,21 @@ export default function Calendar() {
         </TouchableOpacity>
       </View>
 
-      {viewMode === 'day' ? (
-        <View style={styles.dayViewContainer}>
-          <Text style={styles.dayViewTitle}>
-            {formatDate(new Date()).dayName} {formatDate(new Date()).day} {formatDate(new Date()).month}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.calendarContainer}>
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        {viewMode === 'day' ? (
+          <View style={styles.dayViewContainer}>
+            <Text style={styles.dayViewTitle}>
+              {formatDate(new Date()).dayName} {formatDate(new Date()).day} {formatDate(new Date()).month}
+            </Text>
+          </View>
+        ) : viewMode === 'month' ? (
+          <View style={styles.monthViewContainer}>
+            <Text style={styles.monthViewTitle}>
+              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.calendarContainer}>
           {weekDates.map((date, index) => (
           <View 
             key={index} 
@@ -297,7 +324,8 @@ export default function Calendar() {
           </View>
         ))}
         </ScrollView>
-      )}
+        )}
+      </Animated.View>
     </View>
   );
 }
@@ -394,6 +422,18 @@ const styles = StyleSheet.create({
   },
   dayViewTitle: {
     fontSize: 24,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'left',
+  },
+  monthViewContainer: {
+    flex: 1,
+    backgroundColor: '#E4E3DA',
+    paddingTop: 20,
+    paddingLeft: 20,
+  },
+  monthViewTitle: {
+    fontSize: 28,
     fontWeight: '700',
     color: '#000000',
     textAlign: 'left',
