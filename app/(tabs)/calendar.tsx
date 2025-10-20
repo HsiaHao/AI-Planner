@@ -28,6 +28,7 @@ export default function Calendar() {
     return startOfWeek;
   });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -178,8 +179,43 @@ export default function Calendar() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.calendarContainer}>
-        {weekDates.map((date, index) => (
+      {/* View Mode Navigation */}
+      <View style={styles.viewModeNav}>
+        <TouchableOpacity 
+          style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
+          onPress={() => setViewMode('month')}
+        >
+          <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>
+            Month
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.viewModeButton, viewMode === 'week' && styles.viewModeButtonActive]}
+          onPress={() => setViewMode('week')}
+        >
+          <Text style={[styles.viewModeText, viewMode === 'week' && styles.viewModeTextActive]}>
+            Week
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
+          onPress={() => setViewMode('day')}
+        >
+          <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>
+            Day
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {viewMode === 'day' ? (
+        <View style={styles.dayViewContainer}>
+          <Text style={styles.dayViewTitle}>
+            {formatDate(new Date()).dayName} {formatDate(new Date()).day} {formatDate(new Date()).month}
+          </Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.calendarContainer}>
+          {weekDates.map((date, index) => (
           <View 
             key={index} 
             style={[
@@ -260,7 +296,8 @@ export default function Calendar() {
             </View>
           </View>
         ))}
-      </ScrollView>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -294,6 +331,35 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     backgroundColor: '#E4E3DA',
   },
+  viewModeNav: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#E4E3DA',
+    gap: 8,
+  },
+  viewModeButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#E4E3DA',
+    borderColor: '#000000',
+    borderWidth: 1,
+  },
+  viewModeButtonActive: {
+    backgroundColor: '#9DC8B9',
+  },
+  viewModeText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  viewModeTextActive: {
+    color: '#000000',
+    fontWeight: '700',
+  },
   navButton: {
     width: 40,
     height: 40,
@@ -319,6 +385,18 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     flex: 1,
+  },
+  dayViewContainer: {
+    flex: 1,
+    backgroundColor: '#E4E3DA',
+    paddingTop: 20,
+    paddingLeft: 20,
+  },
+  dayViewTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'left',
   },
   dayRow: {
     marginBottom: 8,
