@@ -31,15 +31,15 @@ export default function Calendar() {
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-  // Calendar cell colors using the new specified color codes
+  // Calendar cell colors - all using the same background color
   const dayColors = [
-    '#323232', // Dark gray - 323232
-    '#CC503A', // Red - CC503A
-    '#9198D3', // Purple - 9198D3
-    '#7C474A', // Dark red - 7C474A
-    '#96BD80', // Green - 96BD80
-    '#323232', // Dark gray - 323232 (repeat for 7 days)
-    '#CC503A', // Red - CC503A
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
+    '#E4E3DA', // Same as main background
   ];
 
   const getWeekDates = () => {
@@ -137,18 +137,18 @@ export default function Calendar() {
     }
   };
 
-  // Get lighter version of background color for event labels
+  // Get slightly darker version of background color for event labels
   const getLighterColor = (color: string) => {
-    // Convert hex to RGB and increase lightness
+    // Convert hex to RGB and decrease lightness slightly for contrast
     const hex = color.replace('#', '');
     const r = parseInt(hex.substr(0, 2), 16);
     const g = parseInt(hex.substr(2, 2), 16);
     const b = parseInt(hex.substr(4, 2), 16);
     
-    // Increase each RGB value by 40 to make it lighter
-    const newR = Math.min(255, r + 40);
-    const newG = Math.min(255, g + 40);
-    const newB = Math.min(255, b + 40);
+    // Decrease each RGB value by 20 to make it slightly darker
+    const newR = Math.max(0, r - 20);
+    const newG = Math.max(0, g - 20);
+    const newB = Math.max(0, b - 20);
     
     return `rgb(${newR}, ${newG}, ${newB})`;
   };
@@ -160,7 +160,7 @@ export default function Calendar() {
           style={styles.navButton} 
           onPress={() => navigateWeek('prev')}
         >
-          <Ionicons name="chevron-back" size={24} color="#007AFF" />
+          <Ionicons name="chevron-back" size={24} color="#000000" />
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -174,7 +174,7 @@ export default function Calendar() {
           style={styles.navButton} 
           onPress={() => navigateWeek('next')}
         >
-          <Ionicons name="chevron-forward" size={24} color="#007AFF" />
+          <Ionicons name="chevron-forward" size={24} color="#000000" />
         </TouchableOpacity>
       </View>
 
@@ -183,16 +183,14 @@ export default function Calendar() {
           <View 
             key={index} 
             style={[
-              styles.dayRow, 
-              { backgroundColor: dayColors[index] },
-              isToday(date) && styles.todayRow
+              styles.dayRow,
+              { backgroundColor: dayColors[index] }
             ]}
           >
             <View style={styles.calendarRow}>
               {/* Date Column */}
               <View style={styles.dateColumn}>
                 <View style={styles.dateHeader}>
-                  {isToday(date) && <Ionicons name="star" size={16} color="#000000" style={styles.starIcon} />}
                 </View>
                 <Text style={[styles.dayName, styles.whiteText]}>
                   {formatDate(date).dayName}
@@ -294,25 +292,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     backgroundColor: '#E4E3DA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
   },
   navButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#E4E3DA',
     justifyContent: 'center',
     alignItems: 'center',
+    borderColor: '#000000',
+    borderWidth: 1,
   },
   todayButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#E4E3DA',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+    borderColor: '#000000',
+    borderWidth: 1,
   },
   todayButtonText: {
-    color: '#FFF',
+    color: '#000000',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -325,15 +325,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#000000',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  todayRow: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
   },
   calendarRow: {
     flexDirection: 'row',
@@ -351,28 +349,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  starIcon: {
-    marginRight: 4,
-  },
   dayName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000000',
   },
   monthText: {
     fontSize: 12,
-    color: '#FFFFFF',
+    color: '#000000',
   },
   dayDate: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: '#000000',
   },
   todayText: {
     color: '#007AFF',
     fontWeight: '700',
   },
   whiteText: {
-    color: '#FFFFFF',
+    color: '#000000',
   },
   timeColumn: {
     flex: 1,
@@ -382,13 +377,13 @@ const styles = StyleSheet.create({
   },
   columnDivider: {
     width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#000000',
     marginHorizontal: 4,
   },
   timeSlotLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000000',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -433,15 +428,4 @@ const calendarButton = StyleSheet.create({
         borderColor: '#000000',
         borderWidth: 1
     },
-    todayButton: {
-        backgroundColor: '#E4E3DA',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderColor: '#000000',
-        borderWidth: 1
-    },
-    todayButtonText: {
-        color: '#000000',
-    }
 })
