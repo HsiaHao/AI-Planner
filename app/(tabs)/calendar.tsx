@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -33,6 +32,7 @@ export default function Calendar() {
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
   const [currentDay, setCurrentDay] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date()); // For month view event display
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
@@ -61,6 +61,30 @@ export default function Calendar() {
     return dates;
   };
 
+  const getMonthDates = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    // Get first day of the month
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Get the starting date (might be from previous month)
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    const dates = [];
+    const currentDate = new Date(startDate);
+    
+    // Generate 42 days (6 weeks) to fill the calendar grid
+    for (let i = 0; i < 42; i++) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return dates;
+  };
+
   const goToCurrentDate = () => {
     const today = new Date();
     const dayOfWeek = today.getDay();
@@ -69,6 +93,7 @@ export default function Calendar() {
     setCurrentWeekStart(startOfWeek);
     setCurrentDay(today);
     setCurrentMonth(today);
+    setSelectedDate(today); // Also select today's date in month view
   };
 
   const navigateDay = (direction: 'prev' | 'next') => {
@@ -178,6 +203,11 @@ export default function Calendar() {
     return currentWeekStart.toDateString() === todayWeekStart.toDateString();
   };
 
+  const isTodayVisibleInMonth = () => {
+    const today = new Date();
+    return today.getMonth() === currentMonth.getMonth() && today.getFullYear() === currentMonth.getFullYear();
+  };
+
   const weekDates = getWeekDates();
 
   // Load events from storage when component mounts or week changes
@@ -213,7 +243,11 @@ export default function Calendar() {
 
   // Get events for a specific date
   const getEventsForDate = (date: Date) => {
-    const dateString = date.toISOString().split('T')[0];
+    // Use local date formatting to avoid timezone issues
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
     const dayEvents = events.filter(event => event.date === dateString);
     console.log(`Events for ${dateString}:`, dayEvents);
     return dayEvents;
@@ -281,30 +315,15 @@ export default function Calendar() {
   return (
     <View style={styles.container}>
       <View style={[styles.weekNavigation, (viewMode === 'day' || viewMode === 'week') && styles.dayNavigation]}>
-        {viewMode === 'month' && (
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => navigateWeek('prev')}
-          >
-            <Ionicons name="chevron-back" size={24} color="#000000" />
-          </TouchableOpacity>
-        )}
-        
-        
-        {viewMode === 'month' && (
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => navigateWeek('next')}
-          >
-            <Ionicons name="chevron-forward" size={24} color="#000000" />
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Floating Today button for month view */}
       {viewMode === 'month' && (
         <TouchableOpacity 
-          style={styles.floatingTodayButton} 
+          style={[
+            styles.floatingTodayButton,
+            { backgroundColor: isTodayVisibleInMonth() ? '#9DC8B9' : 'transparent' }
+          ]} 
           onPress={goToCurrentDate}
         >
           <Text style={styles.todayButtonText}>Today</Text>
@@ -438,6 +457,103 @@ export default function Calendar() {
               <Text style={styles.monthViewTitle}>
                 {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </Text>
+              
+              {/* Calendar Grid */}
+              <View style={styles.calendarGrid}>
+                {/* Day headers */}
+                <View style={styles.dayHeaders}>
+                  {dayNames.map((dayName) => (
+                    <Text key={dayName} style={styles.dayHeaderText}>
+                      {dayName}
+                    </Text>
+                  ))}
+                </View>
+                
+                {/* Calendar dates */}
+                <View style={styles.calendarDates}>
+                  {getMonthDates().map((date, index) => {
+                    const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    const hasEvents = getEventsForDate(date).length > 0;
+                    const isSelected = date.toDateString() === selectedDate.toDateString();
+                    const isTodayAndSelected = isToday && isSelected;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.calendarDate,
+                          !isCurrentMonth && styles.calendarDateOtherMonth,
+                          isTodayAndSelected && styles.calendarDateTodaySelected,
+                          !isTodayAndSelected && isToday && styles.calendarDateToday,
+                          !isTodayAndSelected && isSelected && styles.calendarDateSelected
+                        ]}
+                        onPress={() => {
+                          setSelectedDate(date);
+                        }}
+                      >
+                        {isTodayAndSelected ? (
+                          <>
+                            {/* Half circle with green (left half) */}
+                            <View style={styles.halfCircleLeft} />
+                            {/* Half circle with yellow (right half) */}
+                            <View style={styles.halfCircleRight} />
+                          </>
+                        ) : null}
+                        <Text style={[
+                          styles.calendarDateText,
+                          !isCurrentMonth && styles.calendarDateTextOtherMonth,
+                          isToday && styles.calendarDateTextToday,
+                          isSelected && styles.calendarDateTextSelected
+                        ]}>
+                          {date.getDate()}
+                        </Text>
+                        {hasEvents && <View style={styles.eventDot} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Events Section for Selected Date */}
+              <View style={styles.monthEventsSection}>
+                <Text style={styles.monthEventsTitle}>
+                  {selectedDate.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}
+                </Text>
+                <ScrollView 
+                  style={styles.monthEventsContainer}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {getEventsForDate(selectedDate).length > 0 ? (
+                    getEventsForDate(selectedDate)
+                      .sort((a, b) => {
+                        const timeA = a.time.replace(':', '');
+                        const timeB = b.time.replace(':', '');
+                        return parseInt(timeA) - parseInt(timeB);
+                      })
+                      .map((event) => (
+                        <View key={event.id} style={styles.monthEventItem}>
+                          <View style={styles.monthEventTime}>
+                            <Text style={styles.monthEventTimeText}>{event.time}</Text>
+                          </View>
+                          <View style={styles.monthEventContent}>
+                            <Text style={styles.monthEventTitle}>{event.event}</Text>
+                            <Text style={styles.monthEventPriority}>Priority: {event.priority}</Text>
+                          </View>
+                        </View>
+                      ))
+                  ) : (
+                    <View style={styles.monthNoEventsContainer}>
+                      <Text style={styles.monthNoEventsText}>No events scheduled for this day</Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
             </Animated.View>
           </PanGestureHandler>
         ) : (
@@ -628,9 +744,8 @@ const styles = StyleSheet.create({
   },
   floatingTodayButton: {
     position: 'absolute',
-    bottom: 48, // 48px padding from nav bar
-    right: 12, // 12px padding from right edge
-    backgroundColor: '#9DC8B9',
+    bottom: 100, // Further above nav bar to avoid overlap
+    right: 20, // Consistent with other views
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -646,7 +761,7 @@ const styles = StyleSheet.create({
   floatingTodayButtonWeek: {
     position: 'absolute',
     bottom: 100, // Further above nav bar
-    right: 12, // 12px padding from right edge
+    right: 20, // Consistent padding
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -662,7 +777,7 @@ const styles = StyleSheet.create({
   floatingTodayButtonDay: {
     position: 'absolute',
     bottom: 100, // Further above nav bar
-    right: 12, // 12px padding from right edge
+    right: 20, // Consistent padding
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -770,13 +885,182 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#E4E3DA',
     paddingTop: 20,
-    paddingLeft: 20,
+    paddingHorizontal: 20, // Consistent horizontal padding like other views
+    paddingBottom: 20, // Ensure no overlap with navigation bar
   },
   monthViewTitle: {
     fontSize: 28,
     fontWeight: '700',
     color: '#000000',
     textAlign: 'left',
+    marginBottom: 20,
+  },
+  calendarGrid: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 16,
+    minHeight: 350, // Ensure enough space for all dates
+  },
+  dayHeaders: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dayHeaderText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+    paddingVertical: 8,
+  },
+  calendarDates: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  calendarDate: {
+    width: '14.28%', // 100% / 7 days
+    height: 45, // Fixed height for better visibility
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    marginBottom: 0, // No spacing between rows for tighter layout
+  },
+  calendarDateOtherMonth: {
+    opacity: 0.3,
+  },
+  calendarDateToday: {
+    backgroundColor: '#9DC8B9',
+    borderRadius: 20,
+  },
+  calendarDateSelected: {
+    backgroundColor: '#FFD93D',
+    borderRadius: 20,
+  },
+  calendarDateTodaySelected: {
+    backgroundColor: 'transparent', // We'll use custom styling for half circles
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  calendarDateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000000',
+  },
+  calendarDateTextOtherMonth: {
+    color: '#999999',
+  },
+  calendarDateTextToday: {
+    color: '#000000',
+    fontWeight: '700',
+  },
+  calendarDateTextSelected: {
+    color: '#000000',
+    fontWeight: '700',
+  },
+  eventDot: {
+    position: 'absolute',
+    bottom: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF6B6B',
+  },
+  halfCircleLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: '50%',
+    height: '100%',
+    backgroundColor: '#9DC8B9', // Green color
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+  },
+  halfCircleRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '50%',
+    height: '100%',
+    backgroundColor: '#FFD93D', // Yellow color
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  monthEventsSection: {
+    height: 180, // Reduced height to ensure no overlap with nav bar
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  monthEventsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 12,
+  },
+  monthEventsContainer: {
+    flex: 1,
+    maxHeight: 130, // Adjusted to match reduced section height
+  },
+  monthEventItem: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  monthEventTime: {
+    width: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  monthEventTimeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  monthEventContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  monthEventTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 2,
+  },
+  monthEventPriority: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  monthNoEventsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  monthNoEventsText: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
   },
   dayRow: {
     marginBottom: 8,

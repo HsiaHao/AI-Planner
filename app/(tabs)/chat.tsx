@@ -289,9 +289,30 @@ export default function Chat() {
       const transcribedText = data.text;
       
       if (transcribedText) {
-        // Automatically send the transcribed message
         const userInput = transcribedText.trim();
         
+        // Check if the transcribed text is too short or insufficient
+        const words = userInput.split(/\s+/).filter((word: string) => word.length > 0);
+        
+        if (words.length === 0) {
+          Alert.alert(
+            'No Speech Detected', 
+            'Try again, long press to record',
+            [{ text: 'OK', style: 'default' }]
+          );
+          return;
+        }
+        
+        if (words.length === 1) {
+          Alert.alert(
+            'Insufficient Speech', 
+            'Try again, long press to record',
+            [{ text: 'OK', style: 'default' }]
+          );
+          return;
+        }
+        
+        // Automatically send the transcribed message
         // Create enhanced prompt for ChatGPT
         const today = new Date();
         const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -305,7 +326,11 @@ export default function Chat() {
         
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
       } else {
-        Alert.alert('Warning', 'No text was transcribed from the audio.');
+        Alert.alert(
+          'No Speech Detected', 
+          'Try again, long press to record',
+          [{ text: 'OK', style: 'default' }]
+        );
       }
     } catch (err) {
       console.error('Failed to transcribe audio', err);
