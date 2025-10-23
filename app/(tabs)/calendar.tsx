@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 
 interface CalendarEvent {
   id: string;
@@ -30,8 +31,12 @@ export default function Calendar() {
   });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week');
+  const [currentDay, setCurrentDay] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const daySlideAnim = useRef(new Animated.Value(0)).current;
+  const monthSlideAnim = useRef(new Animated.Value(0)).current;
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -62,6 +67,44 @@ export default function Calendar() {
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - dayOfWeek);
     setCurrentWeekStart(startOfWeek);
+    setCurrentDay(today);
+    setCurrentMonth(today);
+  };
+
+  const navigateDay = (direction: 'prev' | 'next') => {
+    // Set initial slide position based on direction
+    const slideDistance = direction === 'next' ? 300 : -300;
+    daySlideAnim.setValue(slideDistance);
+    
+    // Update the day
+    const newDay = new Date(currentDay);
+    newDay.setDate(currentDay.getDate() + (direction === 'next' ? 1 : -1));
+    setCurrentDay(newDay);
+    
+    // Animate slide to center
+    Animated.timing(daySlideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    // Set initial slide position based on direction
+    const slideDistance = direction === 'next' ? 300 : -300;
+    monthSlideAnim.setValue(slideDistance);
+    
+    // Update the month
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(currentMonth.getMonth() + (direction === 'next' ? 1 : -1));
+    setCurrentMonth(newMonth);
+    
+    // Animate slide to center
+    Animated.timing(monthSlideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
   };
 
   const handleViewModeChange = (newViewMode: 'month' | 'week' | 'day') => {
@@ -120,6 +163,19 @@ export default function Calendar() {
   const isToday = (date: Date) => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
+  };
+
+  const isCurrentDay = () => {
+    const today = new Date();
+    return currentDay.toDateString() === today.toDateString();
+  };
+
+  const isCurrentWeek = () => {
+    const today = new Date();
+    const todayWeekStart = new Date(today);
+    todayWeekStart.setDate(today.getDate() - today.getDay());
+    
+    return currentWeekStart.toDateString() === todayWeekStart.toDateString();
   };
 
   const weekDates = getWeekDates();
@@ -198,15 +254,15 @@ export default function Calendar() {
   };
 
   // Find the nearest event to current time
-  const getNearestEventTime = () => {
+  const getNearestEventTime = (date: Date = new Date()) => {
     const now = new Date();
     const currentTime = now.getHours() * 100 + now.getMinutes(); // Convert to HHMM format
     
-    const todayEvents = getEventsForDate(new Date());
-    if (todayEvents.length === 0) return null;
+    const dayEvents = getEventsForDate(date);
+    if (dayEvents.length === 0) return null;
     
     // Sort events by time and find the nearest upcoming event
-    const sortedEvents = todayEvents.sort((a, b) => {
+    const sortedEvents = dayEvents.sort((a, b) => {
       const timeA = parseInt(a.time.replace(':', ''));
       const timeB = parseInt(b.time.replace(':', ''));
       return timeA - timeB;
@@ -224,28 +280,62 @@ export default function Calendar() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.weekNavigation}>
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigateWeek('prev')}
-        >
-          <Ionicons name="chevron-back" size={24} color="#000000" />
-        </TouchableOpacity>
+      <View style={[styles.weekNavigation, (viewMode === 'day' || viewMode === 'week') && styles.dayNavigation]}>
+        {viewMode === 'month' && (
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => navigateWeek('prev')}
+          >
+            <Ionicons name="chevron-back" size={24} color="#000000" />
+          </TouchableOpacity>
+        )}
         
+        
+        {viewMode === 'month' && (
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => navigateWeek('next')}
+          >
+            <Ionicons name="chevron-forward" size={24} color="#000000" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Floating Today button for month view */}
+      {viewMode === 'month' && (
         <TouchableOpacity 
-          style={styles.todayButton} 
+          style={styles.floatingTodayButton} 
           onPress={goToCurrentDate}
         >
           <Text style={styles.todayButtonText}>Today</Text>
         </TouchableOpacity>
-        
+      )}
+
+      {/* Floating Today button for week view */}
+      {viewMode === 'week' && (
         <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigateWeek('next')}
+          style={[
+            styles.floatingTodayButtonWeek,
+            { backgroundColor: isCurrentWeek() ? '#9DC8B9' : 'transparent' }
+          ]} 
+          onPress={goToCurrentDate}
         >
-          <Ionicons name="chevron-forward" size={24} color="#000000" />
+          <Text style={styles.todayButtonText}>Today</Text>
         </TouchableOpacity>
-      </View>
+      )}
+
+      {/* Floating Today button for day view */}
+      {viewMode === 'day' && (
+        <TouchableOpacity 
+          style={[
+            styles.floatingTodayButtonDay,
+            { backgroundColor: isCurrentDay() ? '#9DC8B9' : 'transparent' }
+          ]} 
+          onPress={goToCurrentDate}
+        >
+          <Text style={styles.todayButtonText}>Today</Text>
+        </TouchableOpacity>
+      )}
 
       {/* View Mode Navigation */}
       <View style={styles.viewModeNav}>
@@ -277,135 +367,180 @@ export default function Calendar() {
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         {viewMode === 'day' ? (
-          <View style={styles.dayViewContainer}>
-            <Text style={styles.dayViewTitle}>
-              {formatDate(new Date()).dayName} {formatDate(new Date()).day} {formatDate(new Date()).month}
-            </Text>
-            <ScrollView style={styles.dayEventsContainer}>
-              {getEventsForDate(new Date()).length > 0 ? (
-                getEventsForDate(new Date())
-                  .sort((a, b) => {
-                    // Convert time strings to comparable format (HH:MM)
-                    const timeA = a.time.replace(':', '');
-                    const timeB = b.time.replace(':', '');
-                    return parseInt(timeA) - parseInt(timeB);
-                  })
-                  .map((event) => {
-                    const nearestEventTime = getNearestEventTime();
-                    const isNearestEvent = nearestEventTime === event.time;
-                    
-                    return (
-                    <View key={event.id} style={styles.dayEventItem}>
-                      <View style={styles.dayEventTime}>
-                        {isNearestEvent && <View style={styles.nearestEventCircle} />}
-                        <Text style={styles.dayEventTimeText}>{event.time}</Text>
-                      </View>
-                    <View style={styles.dayEventContent}>
-                      <Text style={styles.dayEventTitle}>{event.event}</Text>
-                      <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
-                    </View>
-                  </View>
-                    );
-                  })
-              ) : (
-                <View style={styles.noEventsContainer}>
-                  <Text style={styles.noEventsText}>No events scheduled for today</Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        ) : viewMode === 'month' ? (
-          <View style={styles.monthViewContainer}>
-            <Text style={styles.monthViewTitle}>
-              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </Text>
-          </View>
-        ) : (
-          <Animated.View style={[styles.calendarContainer, { transform: [{ translateX: slideAnim }] }]}>
-            <ScrollView style={{ flex: 1 }}>
-            {weekDates.map((date, index) => (
-          <View 
-            key={index} 
-            style={[
-              styles.dayRow,
-              { backgroundColor: dayColors[index] }
-            ]}
+          <PanGestureHandler
+            onHandlerStateChange={(event) => {
+              if (event.nativeEvent.state === State.END) {
+                const { translationX } = event.nativeEvent;
+                if (Math.abs(translationX) > 50) {
+                  if (translationX > 0) {
+                    navigateDay('prev');
+                  } else {
+                    navigateDay('next');
+                  }
+                }
+              }
+            }}
           >
-            <View style={styles.calendarRow}>
-              {/* Date Column */}
-              <View style={styles.dateColumn}>
-                {isToday(date) && <View style={styles.todayCircle} />}
-                <View style={styles.dateHeader}>
-                </View>
-                <Text style={[styles.dayName, styles.whiteText]}>
-                  {formatDate(date).dayName}
-                </Text>
-                <Text style={[styles.dayDate, styles.whiteText]}>
-                  {formatDate(date).day}
-                </Text>
-                <Text style={[styles.monthText, styles.whiteText]}>
-                  {formatDate(date).month}
-                </Text>
-              </View>
-              
-              {/* Divider */}
-              <View style={styles.columnDivider} />
-              
-              {/* Morning Column */}
-              <View style={styles.timeColumn}>
-                <Text style={styles.timeSlotLabel}>Morning</Text>
-                <View style={styles.eventsContainer}>
-                  {getEventsForDate(date)
-                    .filter(event => getTimeSlot(event.time) === 'morning')
-                    .map((event) => (
-                      <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
-                        <Text style={styles.eventText}>{event.event}</Text>
-                        <Text style={styles.eventTime}>{event.time}</Text>
+            <Animated.View style={[styles.dayViewContainer, { transform: [{ translateX: daySlideAnim }] }]}>
+              <Text style={styles.dayViewTitle}>
+                {formatDate(currentDay).dayName} {formatDate(currentDay).day} {formatDate(currentDay).month}
+              </Text>
+              <ScrollView style={styles.dayEventsContainer}>
+                {getEventsForDate(currentDay).length > 0 ? (
+                  getEventsForDate(currentDay)
+                    .sort((a, b) => {
+                      // Convert time strings to comparable format (HH:MM)
+                      const timeA = a.time.replace(':', '');
+                      const timeB = b.time.replace(':', '');
+                      return parseInt(timeA) - parseInt(timeB);
+                    })
+                    .map((event) => {
+                      const nearestEventTime = getNearestEventTime(currentDay);
+                      const isNearestEvent = nearestEventTime === event.time;
+                      
+                      return (
+                      <View key={event.id} style={styles.dayEventItem}>
+                        <View style={styles.dayEventTime}>
+                          {isNearestEvent && <View style={styles.nearestEventCircle} />}
+                          <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                        </View>
+                      <View style={styles.dayEventContent}>
+                        <Text style={styles.dayEventTitle}>{event.event}</Text>
+                        <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
                       </View>
-                    ))}
+                    </View>
+                      );
+                    })
+                ) : (
+                  <View style={styles.noEventsContainer}>
+                    <Text style={styles.noEventsText}>No events scheduled for this day</Text>
+                  </View>
+                )}
+              </ScrollView>
+            </Animated.View>
+          </PanGestureHandler>
+        ) : viewMode === 'month' ? (
+          <PanGestureHandler
+            onHandlerStateChange={(event) => {
+              if (event.nativeEvent.state === State.END) {
+                const { translationX } = event.nativeEvent;
+                if (Math.abs(translationX) > 50) {
+                  if (translationX > 0) {
+                    navigateMonth('prev');
+                  } else {
+                    navigateMonth('next');
+                  }
+                }
+              }
+            }}
+          >
+            <Animated.View style={[styles.monthViewContainer, { transform: [{ translateX: monthSlideAnim }] }]}>
+              <Text style={styles.monthViewTitle}>
+                {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </Text>
+            </Animated.View>
+          </PanGestureHandler>
+        ) : (
+          <PanGestureHandler
+            onHandlerStateChange={(event) => {
+              if (event.nativeEvent.state === State.END) {
+                const { translationX } = event.nativeEvent;
+                if (Math.abs(translationX) > 50) {
+                  if (translationX > 0) {
+                    navigateWeek('prev');
+                  } else {
+                    navigateWeek('next');
+                  }
+                }
+              }
+            }}
+          >
+            <Animated.View style={[styles.calendarContainer, { transform: [{ translateX: slideAnim }] }]}>
+              <ScrollView style={{ flex: 1 }}>
+              {weekDates.map((date, index) => (
+            <View 
+              key={index} 
+              style={[
+                styles.dayRow,
+                { backgroundColor: dayColors[index] }
+              ]}
+            >
+              <View style={styles.calendarRow}>
+                {/* Date Column */}
+                <View style={styles.dateColumn}>
+                  {isToday(date) && <View style={styles.todayCircle} />}
+                  <View style={styles.dateHeader}>
+                  </View>
+                  <Text style={[styles.dayName, styles.whiteText]}>
+                    {formatDate(date).dayName}
+                  </Text>
+                  <Text style={[styles.dayDate, styles.whiteText]}>
+                    {formatDate(date).day}
+                  </Text>
+                  <Text style={[styles.monthText, styles.whiteText]}>
+                    {formatDate(date).month}
+                  </Text>
                 </View>
-              </View>
-              
-              {/* Divider */}
-              <View style={styles.columnDivider} />
-              
-              {/* Afternoon Column */}
-              <View style={styles.timeColumn}>
-                <Text style={styles.timeSlotLabel}>Afternoon</Text>
-                <View style={styles.eventsContainer}>
-                  {getEventsForDate(date)
-                    .filter(event => getTimeSlot(event.time) === 'afternoon')
-                    .map((event) => (
-                      <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
-                        <Text style={styles.eventText}>{event.event}</Text>
-                        <Text style={styles.eventTime}>{event.time}</Text>
-                      </View>
-                    ))}
+                
+                {/* Divider */}
+                <View style={styles.columnDivider} />
+                
+                {/* Morning Column */}
+                <View style={styles.timeColumn}>
+                  <Text style={styles.timeSlotLabel}>Morning</Text>
+                  <View style={styles.eventsContainer}>
+                    {getEventsForDate(date)
+                      .filter(event => getTimeSlot(event.time) === 'morning')
+                      .map((event) => (
+                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                          <Text style={styles.eventText}>{event.event}</Text>
+                          <Text style={styles.eventTime}>{event.time}</Text>
+                        </View>
+                      ))}
+                  </View>
                 </View>
-              </View>
-              
-              {/* Divider */}
-              <View style={styles.columnDivider} />
-              
-              {/* Night Column */}
-              <View style={styles.timeColumn}>
-                <Text style={styles.timeSlotLabel}>Night</Text>
-                <View style={styles.eventsContainer}>
-                  {getEventsForDate(date)
-                    .filter(event => getTimeSlot(event.time) === 'night')
-                    .map((event) => (
-                      <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
-                        <Text style={styles.eventText}>{event.event}</Text>
-                        <Text style={styles.eventTime}>{event.time}</Text>
-                      </View>
-                    ))}
+                
+                {/* Divider */}
+                <View style={styles.columnDivider} />
+                
+                {/* Afternoon Column */}
+                <View style={styles.timeColumn}>
+                  <Text style={styles.timeSlotLabel}>Afternoon</Text>
+                  <View style={styles.eventsContainer}>
+                    {getEventsForDate(date)
+                      .filter(event => getTimeSlot(event.time) === 'afternoon')
+                      .map((event) => (
+                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                          <Text style={styles.eventText}>{event.event}</Text>
+                          <Text style={styles.eventTime}>{event.time}</Text>
+                        </View>
+                      ))}
+                  </View>
+                </View>
+                
+                {/* Divider */}
+                <View style={styles.columnDivider} />
+                
+                {/* Night Column */}
+                <View style={styles.timeColumn}>
+                  <Text style={styles.timeSlotLabel}>Night</Text>
+                  <View style={styles.eventsContainer}>
+                    {getEventsForDate(date)
+                      .filter(event => getTimeSlot(event.time) === 'night')
+                      .map((event) => (
+                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                          <Text style={styles.eventText}>{event.event}</Text>
+                          <Text style={styles.eventTime}>{event.time}</Text>
+                        </View>
+                      ))}
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        ))}
-            </ScrollView>
-          </Animated.View>
+          ))}
+              </ScrollView>
+            </Animated.View>
+          </PanGestureHandler>
         )}
       </Animated.View>
     </View>
@@ -440,6 +575,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     backgroundColor: '#E4E3DA',
+  },
+  dayNavigation: {
+    justifyContent: 'center',
   },
   viewModeNav: {
     flexDirection: 'row',
@@ -487,6 +625,55 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderColor: '#000000',
     borderWidth: 1,
+  },
+  floatingTodayButton: {
+    position: 'absolute',
+    bottom: 48, // 48px padding from nav bar
+    right: 12, // 12px padding from right edge
+    backgroundColor: '#9DC8B9',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderColor: '#000000',
+    borderWidth: 1,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  floatingTodayButtonWeek: {
+    position: 'absolute',
+    bottom: 100, // Further above nav bar
+    right: 12, // 12px padding from right edge
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderColor: '#000000',
+    borderWidth: 1,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  floatingTodayButtonDay: {
+    position: 'absolute',
+    bottom: 100, // Further above nav bar
+    right: 12, // 12px padding from right edge
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderColor: '#000000',
+    borderWidth: 1,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   todayButtonText: {
     color: '#000000',
