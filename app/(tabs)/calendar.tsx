@@ -413,21 +413,44 @@ export default function Calendar() {
                       const timeB = b.time.replace(':', '');
                       return parseInt(timeA) - parseInt(timeB);
                     })
-                    .map((event) => {
+                    .map((event, index, array) => {
                       const nearestEventTime = getNearestEventTime(currentDay);
                       const isNearestEvent = nearestEventTime === event.time;
                       
+                      // Check if we need to add a divider before this event
+                      const currentHour = parseInt(event.time.split(':')[0]);
+                      const show12pmDivider = currentHour >= 12 && index > 0 && 
+                        parseInt(array[index - 1].time.split(':')[0]) < 12;
+                      const show6pmDivider = currentHour >= 18 && index > 0 && 
+                        parseInt(array[index - 1].time.split(':')[0]) < 18;
+                      
                       return (
-                      <View key={event.id} style={styles.dayEventItem}>
-                        <View style={styles.dayEventTime}>
-                          {isNearestEvent && <View style={styles.nearestEventCircle} />}
-                          <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                        <View key={event.id}>
+                          {show12pmDivider && (
+                            <View style={styles.timeDivider}>
+                              <View style={styles.timeDividerLine} />
+                              <Text style={styles.timeDividerLabel}>12:00 PM</Text>
+                              <View style={styles.timeDividerLine} />
+                            </View>
+                          )}
+                          {show6pmDivider && (
+                            <View style={styles.timeDivider}>
+                              <View style={styles.timeDividerLine} />
+                              <Text style={styles.timeDividerLabel}>6:00 PM</Text>
+                              <View style={styles.timeDividerLine} />
+                            </View>
+                          )}
+                          <View style={styles.dayEventItem}>
+                            <View style={styles.dayEventTime}>
+                              {isNearestEvent && <View style={styles.nearestEventCircle} />}
+                              <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                            </View>
+                            <View style={styles.dayEventContent}>
+                              <Text style={styles.dayEventTitle}>{event.event}</Text>
+                              <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
+                            </View>
+                          </View>
                         </View>
-                      <View style={styles.dayEventContent}>
-                        <Text style={styles.dayEventTitle}>{event.event}</Text>
-                        <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
-                      </View>
-                    </View>
                       );
                     })
                 ) : (
@@ -880,6 +903,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666666',
     textAlign: 'center',
+  },
+  timeDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 20,
+  },
+  timeDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#CCCCCC',
+  },
+  timeDividerLabel: {
+    fontSize: 12,
+    color: '#666666',
+    marginHorizontal: 12,
+    fontWeight: '500',
   },
   monthViewContainer: {
     flex: 1,
