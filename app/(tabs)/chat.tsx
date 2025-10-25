@@ -3,7 +3,7 @@ import { useChat } from '@ai-sdk/react';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DefaultChatTransport } from 'ai';
-import { Audio } from 'expo-av';
+import { Audio, ResizeMode, Video } from 'expo-av';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -39,6 +39,7 @@ export default function Chat() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const videoRef = useRef<Video>(null);
 
   const { messages, error, sendMessage } = useChat({
     transport: new DefaultChatTransport({
@@ -353,8 +354,16 @@ export default function Chat() {
       {isRecording && (
         <View style={styles.recordingOverlay}>
           <View style={styles.recordingView}>
-            <View style={styles.recordingIcon}>
-              <Ionicons name="mic" size={40} color="#FF3B30" />
+            <View style={styles.videoContainer}>
+              <Video
+                ref={videoRef}
+                source={require('@/assets/images/orange_cat.mp4')}
+                style={styles.recordingVideo}
+                shouldPlay={true}
+                isLooping={true}
+                isMuted={true}
+                resizeMode={ResizeMode.CONTAIN}
+              />
             </View>
             <Text style={styles.recordingText}>Recording...</Text>
             <Text style={styles.recordingSubtext}>Release to stop</Text>
@@ -616,14 +625,19 @@ const styles = StyleSheet.create({
     elevation: 8,
     minWidth: 200,
   },
-  recordingIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FFE5E5',
+  videoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  recordingVideo: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   recordingText: {
     fontSize: 18,

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Platform,
   ScrollView,
@@ -33,22 +34,24 @@ export default function Calendar() {
   const [currentDay, setCurrentDay] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date()); // For month view event display
+  const [swipedEventId, setSwipedEventId] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
   const monthSlideAnim = useRef(new Animated.Value(0)).current;
+  const eventSwipeAnims = useRef<{[key: string]: Animated.Value}>({}).current;
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-  // Calendar cell colors - all using the same background color
+  // Calendar cell colors - all using white background
   const dayColors = [
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
-    '#E4E3DA', // Same as main background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
+    '#FFFFFF', // White background
   ];
 
   const getWeekDates = () => {
@@ -241,6 +244,49 @@ export default function Calendar() {
     }
   };
 
+  const deleteEvent = async (eventId: string) => {
+    try {
+      const updatedEvents = events.filter(event => event.id !== eventId);
+      await AsyncStorage.setItem('calendarEvents', JSON.stringify(updatedEvents));
+      setEvents(updatedEvents);
+      console.log('Event deleted successfully');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      Alert.alert('Error', 'Failed to delete event. Please try again.');
+    }
+  };
+
+  const handleDeleteEvent = (eventId: string, eventTitle: string) => {
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${eventTitle}"?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            // Reset swipe animation
+            if (eventSwipeAnims[eventId]) {
+              Animated.spring(eventSwipeAnims[eventId], {
+                toValue: 0,
+                useNativeDriver: true,
+              }).start();
+            }
+            setSwipedEventId(null);
+          }
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteEvent(eventId);
+            setSwipedEventId(null);
+          }
+        }
+      ]
+    );
+  };
+
   // Get events for a specific date
   const getEventsForDate = (date: Date) => {
     // Use local date formatting to avoid timezone issues
@@ -415,7 +461,8 @@ export default function Calendar() {
                     })
                     .map((event, index, array) => {
                       const nearestEventTime = getNearestEventTime(currentDay);
-                      const isNearestEvent = nearestEventTime === event.time;
+                      const isToday = currentDay.toDateString() === new Date().toDateString();
+                      const isNearestEvent = isToday && nearestEventTime === event.time;
                       
                       // Check if we need to add a divider before this event
                       const currentHour = parseInt(event.time.split(':')[0]);
@@ -440,15 +487,82 @@ export default function Calendar() {
                               <View style={styles.timeDividerLine} />
                             </View>
                           )}
-                          <View style={styles.dayEventItem}>
-                            <View style={styles.dayEventTime}>
-                              {isNearestEvent && <View style={styles.nearestEventCircle} />}
-                              <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                          <View style={styles.eventItemContainer}>
+                            {/* Delete button (hidden behind the event) */}
+                            <View style={styles.deleteButtonContainer}>
+                              <TouchableOpacity
+                                style={styles.deleteButton}
+                                onPress={() => handleDeleteEvent(event.id, event.event)}
+                              >
+                                <Text style={styles.deleteButtonText}>Delete</Text>
+                              </TouchableOpacity>
                             </View>
-                            <View style={styles.dayEventContent}>
-                              <Text style={styles.dayEventTitle}>{event.event}</Text>
-                              <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
-                            </View>
+                            
+                            {/* Swipeable event item */}
+                            <PanGestureHandler
+                              onHandlerStateChange={(gestureEvent) => {
+                                if (gestureEvent.nativeEvent.state === State.END) {
+                                  const { translationX, velocityX } = gestureEvent.nativeEvent;
+                                  
+                                  // Initialize animation value if not exists
+                                  if (!eventSwipeAnims[event.id]) {
+                                    eventSwipeAnims[event.id] = new Animated.Value(0);
+                                  }
+                                  
+                                  // Determine if we should show delete button
+                                  if (translationX < -50 || velocityX < -500) {
+                                    // Show delete button
+                                    Animated.spring(eventSwipeAnims[event.id], {
+                                      toValue: -80,
+                                      useNativeDriver: true,
+                                    }).start();
+                                    setSwipedEventId(event.id);
+                                  } else {
+                                    // Hide delete button
+                                    Animated.spring(eventSwipeAnims[event.id], {
+                                      toValue: 0,
+                                      useNativeDriver: true,
+                                    }).start();
+                                    setSwipedEventId(null);
+                                  }
+                                }
+                              }}
+                              onGestureEvent={(gestureEvent) => {
+                                const { translationX } = gestureEvent.nativeEvent;
+                                
+                                // Initialize animation value if not exists
+                                if (!eventSwipeAnims[event.id]) {
+                                  eventSwipeAnims[event.id] = new Animated.Value(0);
+                                }
+                                
+                                // Only allow left swipe (negative translationX)
+                                if (translationX < 0) {
+                                  eventSwipeAnims[event.id].setValue(Math.max(translationX, -80));
+                                }
+                              }}
+                            >
+                              <Animated.View 
+                                style={[
+                                  styles.dayEventItem,
+                                  {
+                                    transform: [
+                                      {
+                                        translateX: eventSwipeAnims[event.id] || new Animated.Value(0)
+                                      }
+                                    ]
+                                  }
+                                ]}
+                              >
+                                <View style={styles.dayEventTime}>
+                                  {isNearestEvent && <View style={styles.nearestEventCircle} />}
+                                  <Text style={styles.dayEventTimeText}>{event.time}</Text>
+                                </View>
+                                <View style={styles.dayEventContent}>
+                                  <Text style={styles.dayEventTitle}>{event.event}</Text>
+                                  <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
+                                </View>
+                              </Animated.View>
+                            </PanGestureHandler>
                           </View>
                         </View>
                       );
@@ -838,12 +952,37 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingHorizontal: 20,
   },
+  eventItemContainer: {
+    position: 'relative',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  deleteButtonContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    zIndex: 1,
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: '#FF6B6B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   dayEventItem: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#000000',
     shadowColor: '#000',
@@ -851,6 +990,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    zIndex: 2,
   },
   dayEventTime: {
     width: 80,
