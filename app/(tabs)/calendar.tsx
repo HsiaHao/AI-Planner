@@ -1582,19 +1582,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#E4E3DA',
     paddingTop: 20,
     paddingHorizontal: 20, // Consistent horizontal padding like other views
-    paddingBottom: 120, // Add padding to prevent overlap with floating buttons
+    paddingBottom: 20, // Reduced since events section has marginBottom
   },
   monthViewTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#000000',
     textAlign: 'left',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   calendarGrid: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#000000',
     shadowColor: '#000',
@@ -1602,8 +1602,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    marginBottom: 16,
-    minHeight: 350, // Ensure enough space for all dates
+    marginBottom: 12,
+    minHeight: 220, // Further reduced to provide space for events section
   },
   dayHeaders: {
     flexDirection: 'row',
@@ -1691,10 +1691,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
   },
   monthEventsSection: {
-    height: 180, // Reduced height to ensure no overlap with nav bar
+    height: 230, // Further reduced height to ensure no overlap with add button
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#000000',
     shadowColor: '#000',
@@ -1702,6 +1702,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginBottom: 94, // 10px padding above Add button (button at bottom: 20, height: 64, so 20+64+10=94)
   },
   monthEventsTitle: {
     fontSize: 18,
@@ -1710,8 +1711,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   monthEventsContainer: {
-    flex: 1,
-    maxHeight: 130, // Adjusted to match reduced section height
+    height: 155, // Fixed height for the ScrollView (adjusted to fit within section)
   },
   monthEventItem: {
     flexDirection: 'row',
