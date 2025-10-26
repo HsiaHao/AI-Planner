@@ -249,6 +249,11 @@ export default function Calendar() {
     return { dayName, month, day };
   };
 
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.getDate();
+  };
+
   const isToday = (date: Date) => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
@@ -838,69 +843,54 @@ export default function Calendar() {
       <View style={[styles.weekNavigation, (viewMode === 'day' || viewMode === 'week') && styles.dayNavigation]}>
       </View>
 
-      {/* Floating Today button for month view */}
-      {viewMode === 'month' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
-        <TouchableOpacity 
-          style={[
-            styles.floatingTodayButton,
-            { backgroundColor: isTodayVisibleInMonth() ? '#9DC8B9' : '#E4E3DA' }
-          ]} 
-          onPress={goToCurrentDate}
-        >
-          <Text style={styles.todayButtonText}>Today</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Floating Today button for week view */}
-      {viewMode === 'week' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
-        <TouchableOpacity 
-          style={[
-            styles.floatingTodayButtonWeek,
-            { backgroundColor: isCurrentWeek() ? '#9DC8B9' : '#E4E3DA' }
-          ]} 
-          onPress={goToCurrentDate}
-        >
-          <Text style={styles.todayButtonText}>Today</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Floating Today button for day view */}
-      {viewMode === 'day' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
-        <TouchableOpacity 
-          style={[
-            styles.floatingTodayButtonDay,
-            { backgroundColor: isCurrentDay() ? '#9DC8B9' : '#E4E3DA' }
-          ]} 
-          onPress={goToCurrentDate}
-        >
-          <Text style={styles.todayButtonText}>Today</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Floating Add button - middle bottom */}
+      {/* Curved Navigation Bar */}
       {!selectedEvent && !showAddBottomSheet && (
-        <TouchableOpacity 
-          style={styles.floatingAddButton}
-          onPress={() => {
-            if (!isLongPress) {
-              setShowAddBottomSheet(true);
-            }
-          }}
-          onLongPress={async () => {
-            setIsLongPress(true);
-            await startRecording();
-          }}
-          onPressOut={() => {
-            if (isRecording) {
-              stopRecording();
-            }
-            // Reset long press flag after a short delay
-            setTimeout(() => setIsLongPress(false), 100);
-          }}
-          disabled={isTranscribing}
-        >
-          <Ionicons name="add" size={32} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={styles.curvedNavBar}>
+          {/* Today Button */}
+          <TouchableOpacity 
+            style={styles.navBarButton}
+            onPress={goToCurrentDate}
+          >
+            <View style={styles.navBarButtonContent}>
+              <Ionicons name="calendar-outline" size={20} color="#000000" />
+              <Text style={styles.navBarButtonText}>TODAY</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Recording Button - Center */}
+          <TouchableOpacity 
+            style={styles.navBarRecordingButton}
+            onPress={() => {
+              if (!isLongPress) {
+                setShowAddBottomSheet(true);
+              }
+            }}
+            onLongPress={async () => {
+              setIsLongPress(true);
+              await startRecording();
+            }}
+            onPressOut={() => {
+              if (isRecording) {
+                stopRecording();
+              }
+              setTimeout(() => setIsLongPress(false), 100);
+            }}
+            disabled={isTranscribing}
+          >
+            <Ionicons name="mic" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Keyboard Button */}
+          <TouchableOpacity 
+            style={styles.navBarButton}
+            onPress={() => setShowAddBottomSheet(true)}
+          >
+            <View style={styles.navBarButtonContent}>
+              <Ionicons name="create-outline" size={20} color="#000000" />
+              <Text style={styles.navBarButtonText}>TEXT</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* View Mode Navigation */}
@@ -1441,7 +1431,7 @@ export default function Calendar() {
 
       {/* Recording Overlay */}
       {isRecording && (
-        <View style={styles.recordingOverlay}>
+        <View style={[styles.recordingOverlay, { bottom: keyboardHeight }]}>
           <View style={styles.recordingView}>
             <View style={styles.videoContainer}>
               <Video
@@ -1810,14 +1800,40 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  floatingKeyboardButton: {
+    position: 'absolute',
+    bottom: 20, // Same as add button
+    left: '50%',
+    marginLeft: -96, // Position to the left of add button (add button is at -32, so -32-64=-96)
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#9DC8B9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   todayButtonText: {
     color: '#000000',
     fontSize: 16,
     fontWeight: '600',
   },
+  todayButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
   calendarContainer: {
     flex: 1,
-    paddingBottom: 94, // 10px padding above the Add button (button at bottom: 20, height: 64, so 20+64+10=94)
+    paddingBottom: 0, // No padding between week view and navigation bar
   },
   dayViewContainer: {
     flex: 1,
@@ -2547,7 +2563,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
+    zIndex: 3000,
   },
   recordingView: {
     backgroundColor: '#FFFFFF',
@@ -2585,6 +2601,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     textAlign: 'center',
+  },
+  curvedNavBar: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    height: 60,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  navBarButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
+  navBarButtonContent: {
+    alignItems: 'center',
+  },
+  navBarButtonText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#000000',
+    marginTop: 4,
+    letterSpacing: 0.5,
+  },
+  navBarRecordingButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
   },
 });
 
