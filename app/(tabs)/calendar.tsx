@@ -307,6 +307,28 @@ export default function Calendar() {
     }
   }, [showAddBottomSheet]);
 
+  // Animate event action subview slide up/down
+  useEffect(() => {
+    if (selectedEvent) {
+      // Slide up animation - from bottom to visible
+      eventActionSlideAnim.setValue(300); // Start from below screen
+      Animated.spring(eventActionSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    } else {
+      // Slide down animation - from visible to bottom
+      Animated.timing(eventActionSlideAnim, {
+        toValue: 300,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }).start();
+    }
+  }, [selectedEvent]);
+
   // Function to close bottom sheet with animation
   const closeBottomSheet = (resetDrag = true) => {
     Keyboard.dismiss(); // Dismiss keyboard when closing
@@ -1311,7 +1333,12 @@ export default function Calendar() {
             activeOpacity={1}
           />
           {isEditMode ? (
-            <View style={styles.eventActionView}>
+            <Animated.View 
+              style={[
+                styles.eventActionView,
+                { transform: [{ translateY: eventActionSlideAnim }] }
+              ]}
+            >
               <Text style={styles.editModeTitle}>Edit Event</Text>
               <View style={styles.editInputContainer}>
                 <Text style={styles.editLabel}>Event Name</Text>
@@ -1371,9 +1398,14 @@ export default function Calendar() {
                   <Text style={styles.eventActionButtonText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </Animated.View>
           ) : (
-            <View style={styles.eventActionView}>
+            <Animated.View 
+              style={[
+                styles.eventActionView,
+                { transform: [{ translateY: eventActionSlideAnim }] }
+              ]}
+            >
               <Text style={styles.eventActionTitle}>{selectedEvent.event}</Text>
               <Text style={styles.eventActionTime}>{selectedEvent.time}</Text>
               <View style={styles.eventActionButtons}>
@@ -1402,7 +1434,7 @@ export default function Calendar() {
               >
                 <Text style={styles.eventActionCancelText}>Cancel</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           )}
         </View>
       )}
@@ -1487,6 +1519,16 @@ export default function Calendar() {
                 },
               ]}
             >
+            {/* Down arrow indicator */}
+            <View style={styles.bottomSheetDragIndicator}>
+              <TouchableOpacity 
+                style={styles.downArrowButton}
+                onPress={() => closeBottomSheet()}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="chevron-down" size={20} color="#CCCCCC" />
+              </TouchableOpacity>
+            </View>
             <View style={{ flex: 1, flexDirection: 'column' }}>
               <View style={{ flex: 1, minHeight: 0 }}>
                 <ScrollView 
@@ -2387,6 +2429,22 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
     overflow: 'hidden',
+  },
+  bottomSheetDragIndicator: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingTop: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+  },
+  downArrowButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomSheetContent: {
     flex: 1,
