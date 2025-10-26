@@ -1,9 +1,15 @@
+import { generateAPIUrl } from '@/utils';
+import { useChat } from '@ai-sdk/react';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { DefaultChatTransport } from 'ai';
+import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -43,11 +49,46 @@ export default function Calendar() {
   const [editedEventTime, setEditedEventTime] = useState('');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedTime, setSelectedTime] = useState(new Date());
+  const [showAddBottomSheet, setShowAddBottomSheet] = useState(false); // For add event bottom sheet
+  const [chatInput, setChatInput] = useState(''); // For chat input in bottom sheet
+  const [eventAddedMessages, setEventAddedMessages] = useState<Set<string>>(new Set());
+  const [eventDetailsMap, setEventDetailsMap] = useState<{[key: string]: {event: string, time: string, date: string}}>({});
+  const [userMessageMap, setUserMessageMap] = useState<{[key: string]: string}>({});
+  const [chatSessionId, setChatSessionId] = useState(0);
+  const bottomSheetScrollRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
   const monthSlideAnim = useRef(new Animated.Value(0)).current;
   const eventSwipeAnims = useRef<{[key: string]: Animated.Value}>({}).current;
+  const bottomSheetSlideAnim = useRef(new Animated.Value(0)).current;
+
+  // Chat functionality
+  const { messages, sendMessage } = useChat({
+    id: `chat-session-${chatSessionId}`,
+    transport: new DefaultChatTransport({
+      fetch: expoFetch as unknown as typeof globalThis.fetch,
+      api: generateAPIUrl('/api/chat'),
+    }),
+    onError: error => console.error(error, 'ERROR'),
+    onFinish: (message) => {
+      // Check if the message contains event information and parse it
+      if (message.message && message.message.parts && message.message.parts.length > 0) {
+        const textContent = message.message.parts
+          .filter((part: any) => part.type === 'text')
+          .map((part: any) => part.text)
+          .join(' ');
+        
+        // Check if this response contains event data
+        const jsonMatch = textContent.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
+        if (jsonMatch) {
+          // Mark this message as having an event added
+          setEventAddedMessages(prev => new Set([...prev, message.message.id]));
+          parseAndStoreEvent(textContent, message.message.id);
+        }
+      }
+    },
+  });
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -238,6 +279,38 @@ export default function Calendar() {
     return () => clearInterval(interval);
   }, []);
 
+  // Reset chat state when bottom sheet closes
+  useEffect(() => {
+    if (!showAddBottomSheet) {
+      setChatInput('');
+      setEventAddedMessages(new Set());
+      setEventDetailsMap({});
+      setUserMessageMap({});
+      // Increment session ID to create a new chat session next time
+      setChatSessionId(prev => prev + 1);
+    }
+  }, [showAddBottomSheet]);
+
+  // Animate bottom sheet slide up/down
+  useEffect(() => {
+    if (showAddBottomSheet) {
+      // Slide up animation
+      Animated.spring(bottomSheetSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    } else {
+      // Slide down animation
+      Animated.timing(bottomSheetSlideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showAddBottomSheet]);
+
   const loadEventsFromStorage = async () => {
     try {
       const storedEvents = await AsyncStorage.getItem('calendarEvents');
@@ -333,6 +406,99 @@ export default function Calendar() {
     
     setIsEditMode(true);
     setShowTimePicker(true); // Show time picker immediately when entering edit mode
+  };
+
+  const formatDateString = (dateString: string): string => {
+    try {
+      // Parse the date string directly to avoid timezone issues
+      const [year, month, day] = dateString.split('-').map(Number);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${monthNames[month - 1]} ${day}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  const parseAndStoreEvent = (content: string, messageId: string) => {
+    try {
+      // Look for JSON format in the response
+      const jsonMatch = content.match(/\{[\s\S]*"Event"[\s\S]*"Time"[\s\S]*"Priority"[\s\S]*"Date"[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const eventData = JSON.parse(jsonMatch[0]);
+        
+        if (eventData.Event && eventData.Time && eventData.Priority && eventData.Date) {
+          const newEvent: CalendarEvent = {
+            id: Date.now().toString(),
+            event: eventData.Event,
+            time: eventData.Time,
+            priority: eventData.Priority.toLowerCase() || 'low',
+            date: eventData.Date,
+            timestamp: Date.now(),
+          };
+
+          // Add event to storage
+          addEventsToStorage([newEvent]);
+          
+          // Store event details for displaying in the message
+          setEventDetailsMap(prev => ({
+            ...prev,
+            [messageId]: {
+              event: eventData.Event,
+              time: eventData.Time,
+              date: eventData.Date
+            }
+          }));
+
+          // Keep the bottom sheet open for further event creation
+          setChatInput('');
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing event data:', error);
+    }
+  };
+
+  const addEventsToStorage = async (eventsToAdd: CalendarEvent[]) => {
+    try {
+      // Get existing events from storage
+      const existingEventsString = await AsyncStorage.getItem('calendarEvents');
+      const existingEvents = existingEventsString ? JSON.parse(existingEventsString) : [];
+      
+      // Combine existing events with new events
+      const allEvents = [...existingEvents, ...eventsToAdd];
+      
+      // Save the combined events
+      await AsyncStorage.setItem('calendarEvents', JSON.stringify(allEvents));
+      
+      // Update the local state
+      setEvents(allEvents);
+    } catch (error) {
+      console.error('Error adding events to storage:', error);
+    }
+  };
+
+  const handleChatSend = () => {
+    if (chatInput.trim()) {
+      const userInput = chatInput.trim();
+      
+      // Create enhanced prompt for ChatGPT
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const todayString = `${year}-${month}-${day}`; // YYYY-MM-DD format using local date
+      const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
+      
+      // Send the enhanced prompt to ChatGPT
+      sendMessage({ text: enhancedPrompt });
+      
+      // Store the original user input to display instead of the enhanced prompt
+      setUserMessageMap(prev => ({ ...prev, [enhancedPrompt]: userInput }));
+      
+      setChatInput('');
+      setTimeout(() => bottomSheetScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
   };
 
   const saveEditedEvent = async () => {
@@ -443,7 +609,7 @@ export default function Calendar() {
       </View>
 
       {/* Floating Today button for month view */}
-      {viewMode === 'month' && (
+      {viewMode === 'month' && !showAddBottomSheet && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButton,
@@ -456,7 +622,7 @@ export default function Calendar() {
       )}
 
       {/* Floating Today button for week view */}
-      {viewMode === 'week' && !selectedEvent && (
+      {viewMode === 'week' && !selectedEvent && !showAddBottomSheet && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonWeek,
@@ -469,7 +635,7 @@ export default function Calendar() {
       )}
 
       {/* Floating Today button for day view */}
-      {viewMode === 'day' && (
+      {viewMode === 'day' && !showAddBottomSheet && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonDay,
@@ -478,6 +644,16 @@ export default function Calendar() {
           onPress={goToCurrentDate}
         >
           <Text style={styles.todayButtonText}>Today</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Floating Add button - middle bottom */}
+      {!selectedEvent && !showAddBottomSheet && (
+        <TouchableOpacity 
+          style={styles.floatingAddButton}
+          onPress={() => setShowAddBottomSheet(true)}
+        >
+          <Ionicons name="add" size={32} color="#FFFFFF" />
         </TouchableOpacity>
       )}
 
@@ -1006,6 +1182,111 @@ export default function Calendar() {
           )}
         </View>
       )}
+
+      {/* Add Event Bottom Sheet */}
+      {showAddBottomSheet && (
+        <View style={styles.bottomSheetOverlay}>
+          <TouchableOpacity 
+            style={styles.bottomSheetBackdrop}
+            onPress={() => setShowAddBottomSheet(false)}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                transform: [
+                  {
+                    translateY: bottomSheetSlideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0], // Slide from 600px below to 0
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
+            >
+              <ScrollView 
+                ref={bottomSheetScrollRef}
+                style={styles.bottomSheetMessages}
+                contentContainerStyle={styles.bottomSheetMessagesContent}
+              >
+                {messages.length === 0 && (
+                  <Text style={styles.bottomSheetSubtitle}>Tell me about your event</Text>
+                )}
+                {messages.map(m => (
+                  <View 
+                    key={m.id} 
+                    style={[
+                      styles.bottomSheetMessageRow,
+                      m.role === 'user' ? styles.bottomSheetUserMessageRow : styles.bottomSheetAssistantMessageRow
+                    ]}
+                  >
+                    <View 
+                      style={[
+                        styles.bottomSheetMessageBubble,
+                        m.role === 'user' ? styles.bottomSheetUserBubble : styles.bottomSheetAssistantBubble
+                      ]}
+                    >
+                      {m.parts.map((part, i) => {
+                        switch (part.type) {
+                          case 'text':
+                            return (
+                              <Text 
+                                key={`${m.id}-${i}`} 
+                                style={[
+                                  styles.bottomSheetMessageText,
+                                  m.role === 'user' ? styles.bottomSheetUserMessageText : styles.bottomSheetAssistantMessageText
+                                ]}
+                              >
+                                {m.role === 'user' ? (() => {
+                                  const originalMessage = userMessageMap[part.text];
+                                  return originalMessage || part.text;
+                                })() : (() => {
+                                  // Check if this specific message had an event added
+                                  if (m.role === 'assistant' && eventAddedMessages.has(m.id)) {
+                                    const eventDetails = eventDetailsMap[m.id];
+                                    if (eventDetails) {
+                                      const formattedDate = formatDateString(eventDetails.date);
+                                      return `Event added!\n\nEvent: ${eventDetails.event}\nTime: ${formattedDate} ${eventDetails.time}`;
+                                    }
+                                    return "Event added!";
+                                  }
+                                  return part.text;
+                                })()}
+                              </Text>
+                            );
+                        }
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </KeyboardAvoidingView>
+            <View style={styles.bottomSheetInputContainer}>
+              <TextInput
+                style={styles.bottomSheetInput}
+                placeholder="e.g., Meeting with John at 3pm tomorrow"
+                placeholderTextColor="#999"
+                value={chatInput}
+                onChangeText={setChatInput}
+                multiline
+                onSubmitEditing={handleChatSend}
+              />
+              <TouchableOpacity 
+                style={styles.bottomSheetSendButton}
+                onPress={handleChatSend}
+              >
+                <Ionicons name="send" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
       </Animated.View>
     </View>
   );
@@ -1015,7 +1296,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#E4E3DA',
-    paddingBottom: 80, // Account for floating tab bar (60px height + 20px margin)
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
@@ -1092,8 +1372,9 @@ const styles = StyleSheet.create({
   },
   floatingTodayButton: {
     position: 'absolute',
-    bottom: 100, // Further above nav bar to avoid overlap
-    right: 20, // Consistent with other views
+    bottom: 32, // Adjusted to align with Add button center (Add button is 64px tall, center is at 32px from bottom)
+    left: '50%',
+    marginLeft: 48, // Position to the right of Add button (Add button width 64 + gap)
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1108,8 +1389,9 @@ const styles = StyleSheet.create({
   },
   floatingTodayButtonWeek: {
     position: 'absolute',
-    bottom: 100, // Further above nav bar
-    right: 20, // Consistent padding
+    bottom: 32, // Adjusted to align with Add button center
+    left: '50%',
+    marginLeft: 48, // Position to the right of Add button
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1124,8 +1406,9 @@ const styles = StyleSheet.create({
   },
   floatingTodayButtonDay: {
     position: 'absolute',
-    bottom: 100, // Further above nav bar
-    right: 20, // Consistent padding
+    bottom: 32, // Adjusted to align with Add button center
+    left: '50%',
+    marginLeft: 48, // Position to the right of Add button
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1138,6 +1421,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  floatingAddButton: {
+    position: 'absolute',
+    bottom: 20, // Bottom of screen
+    left: '50%',
+    marginLeft: -32, // Half of button width to center it
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#9DC8B9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   todayButtonText: {
     color: '#000000',
     fontSize: 16,
@@ -1145,12 +1448,14 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     flex: 1,
+    paddingBottom: 94, // 10px padding above the Add button (button at bottom: 20, height: 64, so 20+64+10=94)
   },
   dayViewContainer: {
     flex: 1,
     backgroundColor: '#E4E3DA',
     paddingTop: 20,
     paddingLeft: 20,
+    paddingBottom: 120, // Add padding to prevent overlap with floating buttons
   },
   dayViewTitle: {
     fontSize: 24,
@@ -1277,7 +1582,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E4E3DA',
     paddingTop: 20,
     paddingHorizontal: 20, // Consistent horizontal padding like other views
-    paddingBottom: 20, // Ensure no overlap with navigation bar
+    paddingBottom: 120, // Add padding to prevent overlap with floating buttons
   },
   monthViewTitle: {
     fontSize: 28,
@@ -1706,6 +2011,123 @@ const styles = StyleSheet.create({
   },
   cancelEditButton: {
     backgroundColor: '#E4E3DA',
+  },
+  bottomSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2000,
+  },
+  bottomSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  bottomSheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    maxHeight: '80%',
+    flexDirection: 'column',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  bottomSheetContent: {
+    flex: 1,
+    padding: 20,
+    paddingBottom: 0,
+    minHeight: 0, // Allow shrinking
+  },
+  bottomSheetSubtitle: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  bottomSheetMessages: {
+    flex: 1,
+    minHeight: 0, // Prevent ScrollView from expanding
+    paddingHorizontal: 20,
+  },
+  bottomSheetMessagesContent: {
+    paddingBottom: 10,
+    paddingTop: 20,
+  },
+  bottomSheetMessageRow: {
+    marginBottom: 12,
+    flexDirection: 'row',
+  },
+  bottomSheetUserMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  bottomSheetAssistantMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  bottomSheetMessageBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+  },
+  bottomSheetUserBubble: {
+    backgroundColor: '#9DC8B9',
+  },
+  bottomSheetAssistantBubble: {
+    backgroundColor: '#F8F8F8',
+  },
+  bottomSheetMessageText: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  bottomSheetUserMessageText: {
+    color: '#000000',
+  },
+  bottomSheetAssistantMessageText: {
+    color: '#000000',
+  },
+  bottomSheetInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  bottomSheetInput: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 44,
+    maxHeight: 100,
+    fontSize: 16,
+    color: '#000000',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  bottomSheetSendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#9DC8B9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
   },
 });
 

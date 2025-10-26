@@ -37,26 +37,14 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="calendar"
       screenOptions={{
         tabBarActiveTintColor: '#666666',
         tabBarInactiveTintColor: '#666666',
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
-          backgroundColor: '#E4E3DA',
-          borderTopWidth: 0,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          position: 'absolute',
-          bottom: 20,
-          left: 20,
-          right: 20,
-          borderRadius: 25,
-          height: 60,
-          paddingBottom: 0,
+          display: 'none', // Hide the navbar completely
         },
         tabBarItemStyle: {
           borderRadius: 20,
@@ -64,13 +52,6 @@ export default function TabLayout() {
           marginVertical: 8,
         },
       }}>
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: ({ focused }) => <CustomTabIcon name="message.fill" focused={focused} />,
-        }}
-      />
       <Tabs.Screen
         name="calendar"
         options={{
