@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -40,6 +41,8 @@ export default function Calendar() {
   const [isEditMode, setIsEditMode] = useState(false); // For edit mode in action view
   const [editedEventName, setEditedEventName] = useState('');
   const [editedEventTime, setEditedEventTime] = useState('');
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedTime, setSelectedTime] = useState(new Date());
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
@@ -321,7 +324,15 @@ export default function Calendar() {
   const handleWeekViewEdit = (event: CalendarEvent) => {
     setEditedEventName(event.event);
     setEditedEventTime(event.time);
+    
+    // Parse the time string (HH:MM) and set selectedTime
+    const [hours, minutes] = event.time.split(':').map(Number);
+    const timeDate = new Date();
+    timeDate.setHours(hours || 0, minutes || 0, 0, 0);
+    setSelectedTime(timeDate);
+    
     setIsEditMode(true);
+    setShowTimePicker(true); // Show time picker immediately when entering edit mode
   };
 
   const saveEditedEvent = async () => {
@@ -347,6 +358,7 @@ export default function Calendar() {
       setEvents(updatedEvents);
       setIsEditMode(false);
       setSelectedEvent(null);
+      setShowTimePicker(false);
       console.log('Event updated successfully');
     } catch (error) {
       console.error('Error updating event:', error);
@@ -435,7 +447,7 @@ export default function Calendar() {
         <TouchableOpacity 
           style={[
             styles.floatingTodayButton,
-            { backgroundColor: isTodayVisibleInMonth() ? '#9DC8B9' : 'transparent' }
+            { backgroundColor: isTodayVisibleInMonth() ? '#9DC8B9' : '#E4E3DA' }
           ]} 
           onPress={goToCurrentDate}
         >
@@ -448,7 +460,7 @@ export default function Calendar() {
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonWeek,
-            { backgroundColor: isCurrentWeek() ? '#9DC8B9' : 'transparent' }
+            { backgroundColor: isCurrentWeek() ? '#9DC8B9' : '#E4E3DA' }
           ]} 
           onPress={goToCurrentDate}
         >
@@ -461,7 +473,7 @@ export default function Calendar() {
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonDay,
-            { backgroundColor: isCurrentDay() ? '#9DC8B9' : 'transparent' }
+            { backgroundColor: isCurrentDay() ? '#9DC8B9' : '#E4E3DA' }
           ]} 
           onPress={goToCurrentDate}
         >
@@ -815,8 +827,7 @@ export default function Calendar() {
                         <TouchableOpacity 
                           key={event.id} 
                           style={[
-                            styles.eventLabel, 
-                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            styles.eventLabel,
                             selectedEvent?.id === event.id && styles.eventLabelSelected
                           ]}
                           onPress={() => setSelectedEvent(event)}
@@ -841,8 +852,7 @@ export default function Calendar() {
                         <TouchableOpacity 
                           key={event.id} 
                           style={[
-                            styles.eventLabel, 
-                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            styles.eventLabel,
                             selectedEvent?.id === event.id && styles.eventLabelSelected
                           ]}
                           onPress={() => setSelectedEvent(event)}
@@ -867,8 +877,7 @@ export default function Calendar() {
                         <TouchableOpacity 
                           key={event.id} 
                           style={[
-                            styles.eventLabel, 
-                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            styles.eventLabel,
                             selectedEvent?.id === event.id && styles.eventLabelSelected
                           ]}
                           onPress={() => setSelectedEvent(event)}
@@ -897,6 +906,7 @@ export default function Calendar() {
               setIsEditMode(false);
               setEditedEventName('');
               setEditedEventTime('');
+              setShowTimePicker(false);
             }}
             activeOpacity={1}
           />
@@ -915,13 +925,32 @@ export default function Calendar() {
               </View>
               <View style={styles.editInputContainer}>
                 <Text style={styles.editLabel}>Time</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editedEventTime}
-                  onChangeText={setEditedEventTime}
-                  placeholder="Enter time (e.g., 09:00)"
-                  placeholderTextColor="#999"
-                />
+                <TouchableOpacity 
+                  style={styles.timePickerButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={editedEventTime ? styles.timePickerButtonText : styles.timePickerButtonTextPlaceholder}>
+                    {editedEventTime || 'Select time'}
+                  </Text>
+                </TouchableOpacity>
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={selectedTime}
+                    mode="time"
+                    is24Hour={false}
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, date) => {
+                      setShowTimePicker(Platform.OS === 'ios');
+                      if (date) {
+                        setSelectedTime(date);
+                        const hours = date.getHours();
+                        const minutes = date.getMinutes();
+                        const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                        setEditedEventTime(formattedTime);
+                      }
+                    }}
+                  />
+                )}
               </View>
               <View style={styles.editButtons}>
                 <TouchableOpacity 
@@ -936,6 +965,7 @@ export default function Calendar() {
                     setIsEditMode(false);
                     setEditedEventName('');
                     setEditedEventTime('');
+                    setShowTimePicker(false);
                   }}
                 >
                   <Text style={styles.eventActionButtonText}>Cancel</Text>
@@ -967,6 +997,7 @@ export default function Calendar() {
                   setIsEditMode(false);
                   setEditedEventName('');
                   setEditedEventTime('');
+                  setShowTimePicker(false);
                 }}
               >
                 <Text style={styles.eventActionCancelText}>Cancel</Text>
@@ -1510,6 +1541,9 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 6,
     marginVertical: 2,
+    backgroundColor: '#F8F8F8',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -1644,6 +1678,22 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
     fontSize: 16,
     color: '#000000',
+  },
+  timePickerButton: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    justifyContent: 'center',
+  },
+  timePickerButtonText: {
+    fontSize: 16,
+    color: '#000000',
+  },
+  timePickerButtonTextPlaceholder: {
+    fontSize: 16,
+    color: '#999',
   },
   editButtons: {
     flexDirection: 'row',

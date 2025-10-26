@@ -36,6 +36,7 @@ export default function Chat() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [userMessageMap, setUserMessageMap] = useState<{[key: string]: string}>({});
   const [eventAddedMessages, setEventAddedMessages] = useState<Set<string>>(new Set());
+  const [eventDetailsMap, setEventDetailsMap] = useState<{[key: string]: {event: string, time: string, date: string}}>({});
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const recording = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -149,6 +150,17 @@ export default function Chat() {
     }
   };
 
+  const formatDate = (dateString: string): string => {
+    try {
+      // Parse the date string directly to avoid timezone issues
+      const [year, month, day] = dateString.split('-').map(Number);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${monthNames[month - 1]} ${day}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
   const parseAndStoreEvent = (content: string, messageId: string) => {
     try {
       // Look for JSON format in the response
@@ -170,6 +182,16 @@ export default function Chat() {
           // console.log('New event created:', newEvent);
           addEventsToStorage([newEvent]);
           
+          // Store event details for displaying in the message
+          setEventDetailsMap(prev => ({
+            ...prev,
+            [messageId]: {
+              event: eventData.Event,
+              time: eventData.Time,
+              date: eventData.Date
+            }
+          }));
+          
           // Message ID is already tracked in onFinish callback
         }
       }
@@ -186,7 +208,10 @@ export default function Chat() {
       
       // Create enhanced prompt for ChatGPT
       const today = new Date();
-      const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const todayString = `${year}-${month}-${day}`; // YYYY-MM-DD format using local date
       const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
       
       // Send the enhanced prompt to ChatGPT
@@ -316,7 +341,10 @@ export default function Chat() {
         // Automatically send the transcribed message
         // Create enhanced prompt for ChatGPT
         const today = new Date();
-        const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const todayString = `${year}-${month}-${day}`; // YYYY-MM-DD format using local date
         const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
         
         // Send the enhanced prompt to ChatGPT
@@ -408,6 +436,11 @@ export default function Chat() {
                         })() : (() => {
                           // Check if this specific message had an event added
                           if (m.role === 'assistant' && eventAddedMessages.has(m.id)) {
+                            const eventDetails = eventDetailsMap[m.id];
+                            if (eventDetails) {
+                              const formattedDate = formatDate(eventDetails.date);
+                              return `Event added!\n\nEvent: ${eventDetails.event}\nTime: ${formattedDate} ${eventDetails.time}\n\nPlease check your calendar.`;
+                            }
                             return "Event added! Please check your calendar.";
                           }
                           return part.text;
