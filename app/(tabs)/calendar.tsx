@@ -846,14 +846,14 @@ export default function Calendar() {
       {/* Curved Navigation Bar */}
       {!selectedEvent && !showAddBottomSheet && (
         <View style={styles.curvedNavBar}>
-          {/* Today Button */}
+          {/* Keyboard Button */}
           <TouchableOpacity 
             style={styles.navBarButton}
-            onPress={goToCurrentDate}
+            onPress={() => setShowAddBottomSheet(true)}
           >
             <View style={styles.navBarButtonContent}>
-              <Ionicons name="calendar-outline" size={20} color="#000000" />
-              <Text style={styles.navBarButtonText}>TODAY</Text>
+              <Ionicons name="create-outline" size={20} color="#000000" />
+              <Text style={styles.navBarButtonText}>TEXT</Text>
             </View>
           </TouchableOpacity>
 
@@ -880,14 +880,14 @@ export default function Calendar() {
             <Ionicons name="mic" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
-          {/* Keyboard Button */}
+          {/* Today Button */}
           <TouchableOpacity 
             style={styles.navBarButton}
-            onPress={() => setShowAddBottomSheet(true)}
+            onPress={goToCurrentDate}
           >
             <View style={styles.navBarButtonContent}>
-              <Ionicons name="create-outline" size={20} color="#000000" />
-              <Text style={styles.navBarButtonText}>TEXT</Text>
+              <Ionicons name="calendar-outline" size={20} color="#000000" />
+              <Text style={styles.navBarButtonText}>TODAY</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1014,6 +1014,9 @@ export default function Calendar() {
                     <Text style={styles.noEventsText}>No events scheduled for this day</Text>
                   </View>
                 )}
+                
+                {/* Transparent spacer to allow scrolling content above nav bar */}
+                <View style={styles.dayViewSpacer}></View>
               </ScrollView>
             </Animated.View>
           </PanGestureHandler>
@@ -1073,10 +1076,8 @@ export default function Calendar() {
                       >
                         {isTodayAndSelected ? (
                           <>
-                            {/* Half circle with green (left half) */}
-                            <View style={styles.halfCircleLeft} />
-                            {/* Half circle with yellow (right half) */}
-                            <View style={styles.halfCircleRight} />
+                            {/* Whole green circle when today is selected */}
+                            <View style={styles.todayCircle} />
                           </>
                         ) : null}
                         <Text style={[
@@ -1303,6 +1304,33 @@ export default function Calendar() {
               </View>
             </View>
           ))}
+          
+          {/* Transparent spacer cell to allow scrolling Saturday above nav bar */}
+          <View style={styles.transparentSpacerCell}>
+            <View style={styles.calendarRow}>
+              <View style={styles.dateColumn}>
+                <View style={styles.dateHeader}></View>
+                <Text style={[styles.dayName, styles.whiteText]}>SPACE</Text>
+                <Text style={[styles.dayDate, styles.whiteText]}> </Text>
+                <Text style={[styles.monthText, styles.whiteText]}> </Text>
+              </View>
+              <View style={styles.columnDivider} />
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeSlotLabel}> </Text>
+                <View style={styles.eventsContainer}></View>
+              </View>
+              <View style={styles.columnDivider} />
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeSlotLabel}> </Text>
+                <View style={styles.eventsContainer}></View>
+              </View>
+              <View style={styles.columnDivider} />
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeSlotLabel}> </Text>
+                <View style={styles.eventsContainer}></View>
+              </View>
+            </View>
+          </View>
               </ScrollView>
             </Animated.View>
           </PanGestureHandler>
@@ -1840,7 +1868,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E4E3DA',
     paddingTop: 20,
     paddingLeft: 20,
-    paddingBottom: 120, // Add padding to prevent overlap with floating buttons
+    paddingBottom: 0, // No padding - spacer handles nav bar clearance
   },
   dayViewTitle: {
     fontSize: 24,
@@ -2174,6 +2202,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  transparentSpacerCell: {
+    marginBottom: 8,
+    marginHorizontal: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    opacity: 0,
+    height: 70, // Nav bar height (60) + 10
+  },
+  dayViewSpacer: {
+    height: 74, // Nav bar height (60) + 10 + 4
+    backgroundColor: 'transparent',
   },
   calendarRow: {
     flexDirection: 'row',
@@ -2617,10 +2659,10 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     zIndex: 1000,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
   },
   navBarButton: {
     flex: 1,
