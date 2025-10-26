@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
@@ -35,6 +36,10 @@ export default function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date()); // For month view event display
   const [swipedEventId, setSwipedEventId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null); // For week view event selection
+  const [isEditMode, setIsEditMode] = useState(false); // For edit mode in action view
+  const [editedEventName, setEditedEventName] = useState('');
+  const [editedEventTime, setEditedEventTime] = useState('');
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
@@ -287,6 +292,68 @@ export default function Calendar() {
     );
   };
 
+  const handleWeekViewDelete = (event: CalendarEvent) => {
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${event.event}"?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            setSelectedEvent(null);
+            setIsEditMode(false);
+          }
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteEvent(event.id);
+            setSelectedEvent(null);
+            setIsEditMode(false);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleWeekViewEdit = (event: CalendarEvent) => {
+    setEditedEventName(event.event);
+    setEditedEventTime(event.time);
+    setIsEditMode(true);
+  };
+
+  const saveEditedEvent = async () => {
+    if (!selectedEvent) return;
+    
+    if (!editedEventName.trim()) {
+      Alert.alert('Error', 'Event name cannot be empty');
+      return;
+    }
+    
+    if (!editedEventTime.trim()) {
+      Alert.alert('Error', 'Event time cannot be empty');
+      return;
+    }
+
+    try {
+      const updatedEvents = events.map(event => 
+        event.id === selectedEvent.id 
+          ? { ...event, event: editedEventName, time: editedEventTime }
+          : event
+      );
+      await AsyncStorage.setItem('calendarEvents', JSON.stringify(updatedEvents));
+      setEvents(updatedEvents);
+      setIsEditMode(false);
+      setSelectedEvent(null);
+      console.log('Event updated successfully');
+    } catch (error) {
+      console.error('Error updating event:', error);
+      Alert.alert('Error', 'Failed to update event. Please try again.');
+    }
+  };
+
   // Get events for a specific date
   const getEventsForDate = (date: Date) => {
     // Use local date formatting to avoid timezone issues
@@ -377,7 +444,7 @@ export default function Calendar() {
       )}
 
       {/* Floating Today button for week view */}
-      {viewMode === 'week' && (
+      {viewMode === 'week' && !selectedEvent && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonWeek,
@@ -745,10 +812,18 @@ export default function Calendar() {
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'morning')
                       .map((event) => (
-                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                        <TouchableOpacity 
+                          key={event.id} 
+                          style={[
+                            styles.eventLabel, 
+                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            selectedEvent?.id === event.id && styles.eventLabelSelected
+                          ]}
+                          onPress={() => setSelectedEvent(event)}
+                        >
                           <Text style={styles.eventText}>{event.event}</Text>
                           <Text style={styles.eventTime}>{event.time}</Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                   </View>
                 </View>
@@ -763,10 +838,18 @@ export default function Calendar() {
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'afternoon')
                       .map((event) => (
-                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                        <TouchableOpacity 
+                          key={event.id} 
+                          style={[
+                            styles.eventLabel, 
+                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            selectedEvent?.id === event.id && styles.eventLabelSelected
+                          ]}
+                          onPress={() => setSelectedEvent(event)}
+                        >
                           <Text style={styles.eventText}>{event.event}</Text>
                           <Text style={styles.eventTime}>{event.time}</Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                   </View>
                 </View>
@@ -781,10 +864,18 @@ export default function Calendar() {
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'night')
                       .map((event) => (
-                        <View key={event.id} style={[styles.eventLabel, { backgroundColor: getLighterColor(dayColors[index]) }]}>
+                        <TouchableOpacity 
+                          key={event.id} 
+                          style={[
+                            styles.eventLabel, 
+                            { backgroundColor: getLighterColor(dayColors[index]) },
+                            selectedEvent?.id === event.id && styles.eventLabelSelected
+                          ]}
+                          onPress={() => setSelectedEvent(event)}
+                        >
                           <Text style={styles.eventText}>{event.event}</Text>
                           <Text style={styles.eventTime}>{event.time}</Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                   </View>
                 </View>
@@ -795,6 +886,95 @@ export default function Calendar() {
             </Animated.View>
           </PanGestureHandler>
         )}
+
+      {/* Week View Event Action Subview */}
+      {viewMode === 'week' && selectedEvent && (
+        <View style={styles.eventActionOverlay}>
+          <TouchableOpacity 
+            style={styles.eventActionBackdrop}
+            onPress={() => {
+              setSelectedEvent(null);
+              setIsEditMode(false);
+              setEditedEventName('');
+              setEditedEventTime('');
+            }}
+            activeOpacity={1}
+          />
+          {isEditMode ? (
+            <View style={styles.eventActionView}>
+              <Text style={styles.editModeTitle}>Edit Event</Text>
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editLabel}>Event Name</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editedEventName}
+                  onChangeText={setEditedEventName}
+                  placeholder="Enter event name"
+                  placeholderTextColor="#999"
+                />
+              </View>
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editLabel}>Time</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editedEventTime}
+                  onChangeText={setEditedEventTime}
+                  placeholder="Enter time (e.g., 09:00)"
+                  placeholderTextColor="#999"
+                />
+              </View>
+              <View style={styles.editButtons}>
+                <TouchableOpacity 
+                  style={[styles.eventActionButton, styles.saveButton]}
+                  onPress={saveEditedEvent}
+                >
+                  <Text style={styles.eventActionButtonText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.eventActionButton, styles.cancelEditButton]}
+                  onPress={() => {
+                    setIsEditMode(false);
+                    setEditedEventName('');
+                    setEditedEventTime('');
+                  }}
+                >
+                  <Text style={styles.eventActionButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.eventActionView}>
+              <Text style={styles.eventActionTitle}>{selectedEvent.event}</Text>
+              <Text style={styles.eventActionTime}>{selectedEvent.time}</Text>
+              <View style={styles.eventActionButtons}>
+                <TouchableOpacity 
+                  style={[styles.eventActionButton, styles.editButton]}
+                  onPress={() => handleWeekViewEdit(selectedEvent)}
+                >
+                  <Text style={styles.eventActionButtonText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.eventActionButton, styles.deleteButtonWeek]}
+                  onPress={() => handleWeekViewDelete(selectedEvent)}
+                >
+                  <Text style={styles.eventActionButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity 
+                style={styles.eventActionCancel}
+                onPress={() => {
+                  setSelectedEvent(null);
+                  setIsEditMode(false);
+                  setEditedEventName('');
+                  setEditedEventTime('');
+                }}
+              >
+                <Text style={styles.eventActionCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
       </Animated.View>
     </View>
   );
@@ -1346,6 +1526,136 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: '#666',
     textAlign: 'center',
+  },
+  eventLabelSelected: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#9DC8B9',
+    borderWidth: 2,
+  },
+  eventActionOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  eventActionBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  eventActionView: {
+    position: 'absolute',
+    bottom:20, // Position right on top of navbar (navbar is at bottom: 20 with height: 60)
+    left: 20, // Match navbar left margin
+    right: 20, // Match navbar right margin
+    backgroundColor: '#FFFFFF', // White rectangle card
+    borderRadius: 20, // Rounded corners
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  eventActionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  eventActionTime: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  eventActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  eventActionButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#000000',
+  },
+  editButton: {
+    backgroundColor: '#9DC8B9',
+  },
+  deleteButtonWeek: {
+    backgroundColor: '#FF6B6B',
+  },
+  eventActionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  eventActionCancel: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  eventActionCancelText: {
+    fontSize: 16,
+    color: '#666666',
+    fontWeight: '500',
+  },
+  editModeText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#000000',
+    textAlign: 'center',
+    paddingVertical: 40,
+  },
+  editModeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  editInputContainer: {
+    marginBottom: 16,
+  },
+  editLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  editInput: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    fontSize: 16,
+    color: '#000000',
+  },
+  editButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 8,
+  },
+  saveButton: {
+    backgroundColor: '#9DC8B9',
+  },
+  cancelEditButton: {
+    backgroundColor: '#E4E3DA',
   },
 });
 
