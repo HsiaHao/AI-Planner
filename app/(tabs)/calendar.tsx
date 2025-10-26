@@ -4,13 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DefaultChatTransport } from 'ai';
+import { Audio, ResizeMode, Video } from 'expo-av';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  KeyboardAvoidingView,
+  Easing,
+  Keyboard,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -55,13 +58,22 @@ export default function Calendar() {
   const [eventDetailsMap, setEventDetailsMap] = useState<{[key: string]: {event: string, time: string, date: string}}>({});
   const [userMessageMap, setUserMessageMap] = useState<{[key: string]: string}>({});
   const [chatSessionId, setChatSessionId] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isLongPress, setIsLongPress] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const bottomSheetScrollRef = useRef<ScrollView>(null);
+  const chatInputRef = useRef<TextInput>(null);
+  const recording = useRef<Audio.Recording | null>(null);
+  const videoRef = useRef<Video>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const daySlideAnim = useRef(new Animated.Value(0)).current;
   const monthSlideAnim = useRef(new Animated.Value(0)).current;
   const eventSwipeAnims = useRef<{[key: string]: Animated.Value}>({}).current;
   const bottomSheetSlideAnim = useRef(new Animated.Value(0)).current;
+  const bottomSheetDragY = useRef(new Animated.Value(0)).current;
+  const eventActionSlideAnim = useRef(new Animated.Value(0)).current;
 
   // Chat functionality
   const { messages, sendMessage } = useChat({
@@ -282,34 +294,100 @@ export default function Calendar() {
   // Reset chat state when bottom sheet closes
   useEffect(() => {
     if (!showAddBottomSheet) {
+      Keyboard.dismiss(); // Dismiss keyboard when bottom sheet closes
       setChatInput('');
       setEventAddedMessages(new Set());
       setEventDetailsMap({});
       setUserMessageMap({});
+      setIsRecording(false);
+      setIsTranscribing(false);
+      setIsLongPress(false);
       // Increment session ID to create a new chat session next time
       setChatSessionId(prev => prev + 1);
     }
   }, [showAddBottomSheet]);
 
+  // Function to close bottom sheet with animation
+  const closeBottomSheet = (resetDrag = true) => {
+    Keyboard.dismiss(); // Dismiss keyboard when closing
+    if (resetDrag) {
+      bottomSheetDragY.setValue(0); // Reset drag position
+    }
+    Animated.timing(bottomSheetSlideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start(() => {
+      // Close after animation completes
+      setShowAddBottomSheet(false);
+    });
+  };
+
   // Animate bottom sheet slide up/down
   useEffect(() => {
     if (showAddBottomSheet) {
-      // Slide up animation
+      // Slide up animation - from bottom to visible
+      bottomSheetDragY.setValue(0); // Reset drag position
       Animated.spring(bottomSheetSlideAnim, {
         toValue: 1,
         useNativeDriver: true,
         tension: 65,
         friction: 11,
       }).start();
-    } else {
-      // Slide down animation
-      Animated.timing(bottomSheetSlideAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
     }
   }, [showAddBottomSheet]);
+
+  // Auto-focus input when bottom sheet opens
+  useEffect(() => {
+    if (showAddBottomSheet) {
+      // Focus immediately when bottom sheet opens (small delay for animation)
+      const timer = setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [showAddBottomSheet]);
+
+  // Handle keyboard show/hide to adjust bottom sheet
+  useEffect(() => {
+    if (!showAddBottomSheet) {
+      setKeyboardHeight(0);
+      return;
+    }
+
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        setTimeout(() => {
+          bottomSheetScrollRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [showAddBottomSheet]);
+
+  // Auto-scroll to bottom when new messages arrive/responses update
+  useEffect(() => {
+    if (showAddBottomSheet && messages.length > 0) {
+      // Small delay to ensure the message is rendered before scrolling
+      setTimeout(() => {
+        bottomSheetScrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages, showAddBottomSheet]);
 
   const loadEventsFromStorage = async () => {
     try {
@@ -368,7 +446,7 @@ export default function Calendar() {
     );
   };
 
-  const handleWeekViewDelete = (event: CalendarEvent) => {
+  const handleEventDelete = (event: CalendarEvent) => {
     Alert.alert(
       'Delete Event',
       `Are you sure you want to delete "${event.event}"?`,
@@ -394,7 +472,7 @@ export default function Calendar() {
     );
   };
 
-  const handleWeekViewEdit = (event: CalendarEvent) => {
+  const handleEventEdit = (event: CalendarEvent) => {
     setEditedEventName(event.event);
     setEditedEventTime(event.time);
     
@@ -498,6 +576,136 @@ export default function Calendar() {
       
       setChatInput('');
       setTimeout(() => bottomSheetScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      console.log('Requesting permissions..');
+      const { granted } = await Audio.requestPermissionsAsync();
+      
+      if (!granted) {
+        Alert.alert('Permission Required', 'Please allow microphone access to use voice input.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recording.current = newRecording;
+      setIsRecording(true);
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const stopRecording = async () => {
+    console.log('Stopping recording..');
+    if (!recording.current) {
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      setIsRecording(false);
+      await recording.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+      
+      const uri = recording.current.getURI();
+      recording.current = null;
+      console.log('Recording stopped and stored at', uri);
+
+      if (uri) {
+        await transcribeAudio(uri);
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+      setIsRecording(false);
+      recording.current = null;
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+    }
+  };
+
+  const transcribeAudio = async (uri: string) => {
+    setIsTranscribing(true);
+    try {
+      console.log('Starting transcription for URI:', uri);
+      
+      // Create FormData for our server endpoint
+      const formData = new FormData();
+      
+      // For React Native, we need to create the file object differently
+      const audioFile = {
+        uri: uri,
+        type: 'audio/m4a',
+        name: 'recording.m4a',
+      } as any;
+      
+      formData.append('file', audioFile);
+
+      console.log('FormData created, making API request to server...');
+      
+      const response = await fetch(generateAPIUrl('/api/transcribe'), {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server Error Response:', errorText);
+        throw new Error(`Transcription failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Transcription result:', data);
+
+      if (data.text) {
+        // Set the transcribed text as the chat input and send it
+        setChatInput(data.text);
+        // Automatically send the transcribed message
+        const userInput = data.text.trim();
+        
+        // Create enhanced prompt for ChatGPT
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const todayString = `${year}-${month}-${day}`;
+        const enhancedPrompt = `Please analyze this message. If it contains event information (meetings, appointments, tasks with time), respond with JSON format: {"Event": "event name", "Time": "HH:MM format", "Priority": "low", "Date": "YYYY-MM-DD format"}. For dates, use today's date (${todayString}) unless specifically mentioned otherwise. If it's not an event, respond normally as a chat assistant. Original message: ${userInput}`;
+        
+        // Send the enhanced prompt to ChatGPT
+        sendMessage({ text: enhancedPrompt });
+        
+        // Store the original user input to display instead of the enhanced prompt
+        setUserMessageMap(prev => ({ ...prev, [enhancedPrompt]: userInput }));
+        
+        setChatInput('');
+        // Open bottom sheet to show the conversation
+        if (!showAddBottomSheet) {
+          setShowAddBottomSheet(true);
+        }
+        setTimeout(() => bottomSheetScrollRef.current?.scrollToEnd({ animated: true }), 100);
+      } else {
+        Alert.alert('Error', 'No transcription text received from server.');
+      }
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
+      setIsLongPress(false);
     }
   };
 
@@ -609,7 +817,7 @@ export default function Calendar() {
       </View>
 
       {/* Floating Today button for month view */}
-      {viewMode === 'month' && !showAddBottomSheet && (
+      {viewMode === 'month' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButton,
@@ -622,7 +830,7 @@ export default function Calendar() {
       )}
 
       {/* Floating Today button for week view */}
-      {viewMode === 'week' && !selectedEvent && !showAddBottomSheet && (
+      {viewMode === 'week' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonWeek,
@@ -635,7 +843,7 @@ export default function Calendar() {
       )}
 
       {/* Floating Today button for day view */}
-      {viewMode === 'day' && !showAddBottomSheet && (
+      {viewMode === 'day' && !selectedEvent && !showAddBottomSheet && !isEditMode && (
         <TouchableOpacity 
           style={[
             styles.floatingTodayButtonDay,
@@ -651,7 +859,23 @@ export default function Calendar() {
       {!selectedEvent && !showAddBottomSheet && (
         <TouchableOpacity 
           style={styles.floatingAddButton}
-          onPress={() => setShowAddBottomSheet(true)}
+          onPress={() => {
+            if (!isLongPress) {
+              setShowAddBottomSheet(true);
+            }
+          }}
+          onLongPress={async () => {
+            setIsLongPress(true);
+            await startRecording();
+          }}
+          onPressOut={() => {
+            if (isRecording) {
+              stopRecording();
+            }
+            // Reset long press flag after a short delay
+            setTimeout(() => setIsLongPress(false), 100);
+          }}
+          disabled={isTranscribing}
         >
           <Ionicons name="add" size={32} color="#FFFFFF" />
         </TouchableOpacity>
@@ -743,69 +967,20 @@ export default function Calendar() {
                             </View>
                           )}
                           <View style={styles.eventItemContainer}>
-                            {/* Delete button (hidden behind the event) */}
-                            <View style={styles.deleteButtonContainer}>
-                              <TouchableOpacity
-                                style={styles.deleteButton}
-                                onPress={() => handleDeleteEvent(event.id, event.event)}
-                              >
-                                <Text style={styles.deleteButtonText}>Delete</Text>
-                              </TouchableOpacity>
-                            </View>
-                            
-                            {/* Swipeable event item */}
-                            <PanGestureHandler
-                              onHandlerStateChange={(gestureEvent) => {
-                                if (gestureEvent.nativeEvent.state === State.END) {
-                                  const { translationX, velocityX } = gestureEvent.nativeEvent;
-                                  
-                                  // Initialize animation value if not exists
-                                  if (!eventSwipeAnims[event.id]) {
-                                    eventSwipeAnims[event.id] = new Animated.Value(0);
-                                  }
-                                  
-                                  // Determine if we should show delete button
-                                  if (translationX < -50 || velocityX < -500) {
-                                    // Show delete button
-                                    Animated.spring(eventSwipeAnims[event.id], {
-                                      toValue: -80,
-                                      useNativeDriver: true,
-                                    }).start();
-                                    setSwipedEventId(event.id);
-                                  } else {
-                                    // Hide delete button
-                                    Animated.spring(eventSwipeAnims[event.id], {
-                                      toValue: 0,
-                                      useNativeDriver: true,
-                                    }).start();
-                                    setSwipedEventId(null);
-                                  }
-                                }
-                              }}
-                              onGestureEvent={(gestureEvent) => {
-                                const { translationX } = gestureEvent.nativeEvent;
-                                
-                                // Initialize animation value if not exists
-                                if (!eventSwipeAnims[event.id]) {
-                                  eventSwipeAnims[event.id] = new Animated.Value(0);
-                                }
-                                
-                                // Only allow left swipe (negative translationX)
-                                if (translationX < 0) {
-                                  eventSwipeAnims[event.id].setValue(Math.max(translationX, -80));
+                            {/* Event item - tap to select */}
+                            <Pressable
+                              onPress={() => {
+                                try {
+                                  setSelectedEvent(event);
+                                } catch (error) {
+                                  console.error('Error in press handler:', error);
                                 }
                               }}
                             >
-                              <Animated.View 
+                              <View 
                                 style={[
                                   styles.dayEventItem,
-                                  {
-                                    transform: [
-                                      {
-                                        translateX: eventSwipeAnims[event.id] || new Animated.Value(0)
-                                      }
-                                    ]
-                                  }
+                                  selectedEvent?.id === event.id && styles.eventLabelSelected
                                 ]}
                               >
                                 <View style={styles.dayEventTime}>
@@ -816,8 +991,8 @@ export default function Calendar() {
                                   <Text style={styles.dayEventTitle}>{event.event}</Text>
                                   <Text style={styles.dayEventPriority}>Priority: {event.priority}</Text>
                                 </View>
-                              </Animated.View>
-                            </PanGestureHandler>
+                              </View>
+                            </Pressable>
                           </View>
                         </View>
                       );
@@ -922,23 +1097,57 @@ export default function Calendar() {
                   nestedScrollEnabled={true}
                 >
                   {getEventsForDate(selectedDate).length > 0 ? (
-                    getEventsForDate(selectedDate)
-                      .sort((a, b) => {
-                        const timeA = a.time.replace(':', '');
-                        const timeB = b.time.replace(':', '');
-                        return parseInt(timeA) - parseInt(timeB);
-                      })
-                      .map((event) => (
-                        <View key={event.id} style={styles.monthEventItem}>
-                          <View style={styles.monthEventTime}>
-                            <Text style={styles.monthEventTimeText}>{event.time}</Text>
-                          </View>
-                          <View style={styles.monthEventContent}>
-                            <Text style={styles.monthEventTitle}>{event.event}</Text>
-                            <Text style={styles.monthEventPriority}>Priority: {event.priority}</Text>
-                          </View>
-                        </View>
-                      ))
+                    (() => {
+                      const today = new Date();
+                      const isToday = selectedDate.toDateString() === today.toDateString();
+                      const nearestEventTime = isToday ? getNearestEventTime(selectedDate) : null;
+                      
+                      // Debug logging
+                      if (isToday && nearestEventTime) {
+                        console.log('Nearest event time:', nearestEventTime);
+                      }
+                      
+                      return getEventsForDate(selectedDate)
+                        .sort((a, b) => {
+                          const timeA = a.time.replace(':', '');
+                          const timeB = b.time.replace(':', '');
+                          return parseInt(timeA) - parseInt(timeB);
+                        })
+                        .map((event) => {
+                          const isNearestEvent = isToday && nearestEventTime !== null && nearestEventTime === event.time;
+                          if (isNearestEvent) {
+                            console.log('Marking event as nearest:', event.event, event.time);
+                          }
+                          return (
+                            <TouchableOpacity
+                              key={event.id}
+                              onPress={() => {
+                                try {
+                                  setSelectedEvent(event);
+                                } catch (error) {
+                                  console.error('Error in press handler:', error);
+                                }
+                              }}
+                            >
+                              <View 
+                                style={[
+                                  styles.monthEventItem,
+                                  selectedEvent?.id === event.id && styles.monthEventItemSelected
+                                ]}
+                              >
+                                <View style={styles.monthEventTime}>
+                                  {isNearestEvent && <View style={styles.monthNearestEventCircle} />}
+                                  <Text style={styles.monthEventTimeText}>{event.time}</Text>
+                                </View>
+                                <View style={styles.monthEventContent}>
+                                  <Text style={styles.monthEventTitle}>{event.event}</Text>
+                                  <Text style={styles.monthEventPriority}>Priority: {event.priority}</Text>
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        });
+                    })()
                   ) : (
                     <View style={styles.monthNoEventsContainer}>
                       <Text style={styles.monthNoEventsText}>No events scheduled for this day</Text>
@@ -999,6 +1208,11 @@ export default function Calendar() {
                   <View style={styles.eventsContainer}>
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'morning')
+                      .sort((a, b) => {
+                        const timeA = a.time.replace(':', '');
+                        const timeB = b.time.replace(':', '');
+                        return parseInt(timeA) - parseInt(timeB);
+                      })
                       .map((event) => (
                         <TouchableOpacity 
                           key={event.id} 
@@ -1024,6 +1238,11 @@ export default function Calendar() {
                   <View style={styles.eventsContainer}>
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'afternoon')
+                      .sort((a, b) => {
+                        const timeA = a.time.replace(':', '');
+                        const timeB = b.time.replace(':', '');
+                        return parseInt(timeA) - parseInt(timeB);
+                      })
                       .map((event) => (
                         <TouchableOpacity 
                           key={event.id} 
@@ -1049,6 +1268,11 @@ export default function Calendar() {
                   <View style={styles.eventsContainer}>
                     {getEventsForDate(date)
                       .filter(event => getTimeSlot(event.time) === 'night')
+                      .sort((a, b) => {
+                        const timeA = a.time.replace(':', '');
+                        const timeB = b.time.replace(':', '');
+                        return parseInt(timeA) - parseInt(timeB);
+                      })
                       .map((event) => (
                         <TouchableOpacity 
                           key={event.id} 
@@ -1072,8 +1296,8 @@ export default function Calendar() {
           </PanGestureHandler>
         )}
 
-      {/* Week View Event Action Subview */}
-      {viewMode === 'week' && selectedEvent && (
+      {/* Week/Day/Month View Event Action Subview */}
+      {(viewMode === 'week' || viewMode === 'day' || viewMode === 'month') && selectedEvent && (
         <View style={styles.eventActionOverlay}>
           <TouchableOpacity 
             style={styles.eventActionBackdrop}
@@ -1155,13 +1379,13 @@ export default function Calendar() {
               <View style={styles.eventActionButtons}>
                 <TouchableOpacity 
                   style={[styles.eventActionButton, styles.editButton]}
-                  onPress={() => handleWeekViewEdit(selectedEvent)}
+                  onPress={() => handleEventEdit(selectedEvent)}
                 >
                   <Text style={styles.eventActionButtonText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.eventActionButton, styles.deleteButtonWeek]}
-                  onPress={() => handleWeekViewDelete(selectedEvent)}
+                  onPress={() => handleEventDelete(selectedEvent)}
                 >
                   <Text style={styles.eventActionButtonText}>Delete</Text>
                 </TouchableOpacity>
@@ -1183,108 +1407,211 @@ export default function Calendar() {
         </View>
       )}
 
+      {/* Recording Overlay */}
+      {isRecording && (
+        <View style={styles.recordingOverlay}>
+          <View style={styles.recordingView}>
+            <View style={styles.videoContainer}>
+              <Video
+                ref={videoRef}
+                source={require('@/assets/images/orange_cat.mp4')}
+                style={styles.recordingVideo}
+                shouldPlay={true}
+                isLooping={true}
+                isMuted={true}
+                resizeMode={ResizeMode.CONTAIN}
+              />
+            </View>
+            <Text style={styles.recordingText}>Recording...</Text>
+            <Text style={styles.recordingSubtext}>Release to stop</Text>
+          </View>
+        </View>
+      )}
+
       {/* Add Event Bottom Sheet */}
       {showAddBottomSheet && (
         <View style={styles.bottomSheetOverlay}>
           <TouchableOpacity 
             style={styles.bottomSheetBackdrop}
-            onPress={() => setShowAddBottomSheet(false)}
+            onPress={() => closeBottomSheet()}
             activeOpacity={1}
           />
-          <Animated.View
-            style={[
-              styles.bottomSheetContainer,
-              {
-                transform: [
-                  {
-                    translateY: bottomSheetSlideAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [600, 0], // Slide from 600px below to 0
-                    }),
-                  },
-                ],
-              },
-            ]}
+          <PanGestureHandler
+            onGestureEvent={Animated.event(
+              [{ nativeEvent: { translationY: bottomSheetDragY } }],
+              { 
+                useNativeDriver: true,
+                listener: (event: any) => {
+                  const { translationY } = event.nativeEvent;
+                  // Only allow downward drag (positive translationY)
+                  if (translationY < 0) {
+                    bottomSheetDragY.setValue(0);
+                  }
+                }
+              }
+            )}
+            onHandlerStateChange={(event) => {
+              if (event.nativeEvent.state === State.END) {
+                const { translationY, velocityY } = event.nativeEvent;
+                // Close if dragged down more than 100px or with sufficient velocity
+                if (translationY > 100 || velocityY > 500) {
+                  // Close without resetting drag to continue from current position
+                  closeBottomSheet(false);
+                } else {
+                  // Animate back to original position
+                  Animated.spring(bottomSheetDragY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                  }).start();
+                }
+              }
+            }}
           >
-            <KeyboardAvoidingView 
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ flex: 1 }}
+            <Animated.View
+              style={[
+                styles.bottomSheetContainer,
+                {
+                  top: 120,
+                  bottom: keyboardHeight,
+                  transform: [
+                    {
+                      translateY: Animated.add(
+                        bottomSheetSlideAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [600, 0], // Slide from 600px below to 0
+                        }),
+                        bottomSheetDragY
+                      ),
+                    },
+                  ],
+                },
+              ]}
             >
-              <ScrollView 
-                ref={bottomSheetScrollRef}
-                style={styles.bottomSheetMessages}
-                contentContainerStyle={styles.bottomSheetMessagesContent}
-              >
-                {messages.length === 0 && (
-                  <Text style={styles.bottomSheetSubtitle}>Tell me about your event</Text>
-                )}
-                {messages.map(m => (
-                  <View 
-                    key={m.id} 
-                    style={[
-                      styles.bottomSheetMessageRow,
-                      m.role === 'user' ? styles.bottomSheetUserMessageRow : styles.bottomSheetAssistantMessageRow
-                    ]}
-                  >
+            <View style={{ flex: 1, flexDirection: 'column' }}>
+              <View style={{ flex: 1, minHeight: 0 }}>
+                <ScrollView 
+                  ref={bottomSheetScrollRef}
+                  style={styles.bottomSheetMessages}
+                  contentContainerStyle={styles.bottomSheetMessagesContent}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled={true}
+                  showsVerticalScrollIndicator={true}
+                >
+                  {messages.length === 0 && (
                     <View 
                       style={[
-                        styles.bottomSheetMessageBubble,
-                        m.role === 'user' ? styles.bottomSheetUserBubble : styles.bottomSheetAssistantBubble
+                        styles.bottomSheetMessageRow,
+                        styles.bottomSheetAssistantMessageRow
                       ]}
                     >
-                      {m.parts.map((part, i) => {
-                        switch (part.type) {
-                          case 'text':
-                            return (
-                              <Text 
-                                key={`${m.id}-${i}`} 
-                                style={[
-                                  styles.bottomSheetMessageText,
-                                  m.role === 'user' ? styles.bottomSheetUserMessageText : styles.bottomSheetAssistantMessageText
-                                ]}
-                              >
-                                {m.role === 'user' ? (() => {
-                                  const originalMessage = userMessageMap[part.text];
-                                  return originalMessage || part.text;
-                                })() : (() => {
-                                  // Check if this specific message had an event added
-                                  if (m.role === 'assistant' && eventAddedMessages.has(m.id)) {
-                                    const eventDetails = eventDetailsMap[m.id];
-                                    if (eventDetails) {
-                                      const formattedDate = formatDateString(eventDetails.date);
-                                      return `Event added!\n\nEvent: ${eventDetails.event}\nTime: ${formattedDate} ${eventDetails.time}`;
-                                    }
-                                    return "Event added!";
-                                  }
-                                  return part.text;
-                                })()}
-                              </Text>
-                            );
-                        }
-                      })}
+                      <View 
+                        style={[
+                          styles.bottomSheetMessageBubble,
+                          styles.bottomSheetAssistantBubble
+                        ]}
+                      >
+                        <Text 
+                          style={[
+                            styles.bottomSheetMessageText,
+                            styles.bottomSheetAssistantMessageText
+                          ]}
+                        >
+                          New Event?
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
-              </ScrollView>
-            </KeyboardAvoidingView>
-            <View style={styles.bottomSheetInputContainer}>
-              <TextInput
-                style={styles.bottomSheetInput}
-                placeholder="e.g., Meeting with John at 3pm tomorrow"
-                placeholderTextColor="#999"
-                value={chatInput}
-                onChangeText={setChatInput}
-                multiline
-                onSubmitEditing={handleChatSend}
-              />
-              <TouchableOpacity 
-                style={styles.bottomSheetSendButton}
-                onPress={handleChatSend}
-              >
-                <Ionicons name="send" size={24} color="#FFFFFF" />
-              </TouchableOpacity>
+                  )}
+                  {messages.map(m => (
+                    <View 
+                      key={m.id} 
+                      style={[
+                        styles.bottomSheetMessageRow,
+                        m.role === 'user' ? styles.bottomSheetUserMessageRow : styles.bottomSheetAssistantMessageRow
+                      ]}
+                    >
+                      <View 
+                        style={[
+                          styles.bottomSheetMessageBubble,
+                          m.role === 'user' ? styles.bottomSheetUserBubble : styles.bottomSheetAssistantBubble
+                        ]}
+                      >
+                        {m.parts.map((part, i) => {
+                          switch (part.type) {
+                            case 'text':
+                              return (
+                                <Text 
+                                  key={`${m.id}-${i}`} 
+                                  style={[
+                                    styles.bottomSheetMessageText,
+                                    m.role === 'user' ? styles.bottomSheetUserMessageText : styles.bottomSheetAssistantMessageText
+                                  ]}
+                                >
+                                  {m.role === 'user' ? (() => {
+                                    const originalMessage = userMessageMap[part.text];
+                                    return originalMessage || part.text;
+                                  })() : (() => {
+                                    // Check if this specific message had an event added
+                                    if (m.role === 'assistant' && eventAddedMessages.has(m.id)) {
+                                      const eventDetails = eventDetailsMap[m.id];
+                                      if (eventDetails) {
+                                        const formattedDate = formatDateString(eventDetails.date);
+                                        return `Event added!\n\nEvent: ${eventDetails.event}\nTime: ${formattedDate} ${eventDetails.time}`;
+                                      }
+                                      return "Event added!";
+                                    }
+                                    return part.text;
+                                  })()}
+                                </Text>
+                              );
+                          }
+                        })}
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={styles.bottomSheetInputContainer}>
+                <TextInput
+                  ref={chatInputRef}
+                  style={styles.bottomSheetInput}
+                  placeholder="e.g., Meeting with John at 3pm tomorrow"
+                  placeholderTextColor="#999"
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  multiline
+                  onSubmitEditing={handleChatSend}
+                />
+                <TouchableOpacity 
+                  style={[
+                    styles.bottomSheetSendButton,
+                    chatInput.trim() ? styles.bottomSheetSendButtonActive : styles.bottomSheetRecordButton,
+                    isRecording && styles.bottomSheetRecordButtonActive
+                  ]}
+                  onPress={chatInput.trim() ? handleChatSend : undefined}
+                  onPressIn={!chatInput.trim() ? async () => {
+                    await startRecording();
+                  } : undefined}
+                  onPressOut={!chatInput.trim() && isRecording ? () => {
+                    stopRecording();
+                  } : undefined}
+                  disabled={isTranscribing}
+                >
+                  <Ionicons 
+                    name={
+                      isRecording 
+                        ? "mic" 
+                        : chatInput.trim() 
+                          ? "send" 
+                          : "mic-outline"
+                    } 
+                    size={24} 
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
-          </Animated.View>
+            </Animated.View>
+          </PanGestureHandler>
         </View>
       )}
       </Animated.View>
@@ -1722,11 +2049,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
+  monthEventItemSelected: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#9DC8B9',
+    borderWidth: 2,
+  },
   monthEventTime: {
     width: 60,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    position: 'relative',
+  },
+  monthNearestEventCircle: {
+    position: 'absolute',
+    width: 60,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#9DC8B9',
+    zIndex: 0,
+    top: '50%',
+    left: '50%',
+    marginTop: -15,
+    marginLeft: -30,
   },
   monthEventTimeText: {
     fontSize: 14,
@@ -2030,19 +2375,18 @@ const styles = StyleSheet.create({
   },
   bottomSheetContainer: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 25,
     borderTopRightRadius: 25,
-    maxHeight: '80%',
     flexDirection: 'column',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 10,
+    overflow: 'hidden',
   },
   bottomSheetContent: {
     flex: 1,
@@ -2058,11 +2402,10 @@ const styles = StyleSheet.create({
   },
   bottomSheetMessages: {
     flex: 1,
-    minHeight: 0, // Prevent ScrollView from expanding
     paddingHorizontal: 20,
   },
   bottomSheetMessagesContent: {
-    paddingBottom: 10,
+    paddingBottom: 20,
     paddingTop: 20,
   },
   bottomSheetMessageRow: {
@@ -2103,9 +2446,8 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 20,
     paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
     backgroundColor: '#FFFFFF',
+    minHeight: 70, // Ensure input container has minimum height
   },
   bottomSheetInput: {
     flex: 1,
@@ -2128,6 +2470,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#000000',
+  },
+  bottomSheetSendButtonActive: {
+    backgroundColor: '#9DC8B9',
+  },
+  bottomSheetRecordButton: {
+    backgroundColor: '#007AFF',
+  },
+  bottomSheetRecordButtonActive: {
+    backgroundColor: '#FF3B30',
+  },
+  recordingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  recordingView: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    minWidth: 200,
+  },
+  videoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  recordingVideo: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  recordingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FF3B30',
+    marginBottom: 4,
+  },
+  recordingSubtext: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
   },
 });
 
