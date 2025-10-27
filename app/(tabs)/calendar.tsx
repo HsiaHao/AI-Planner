@@ -1,6 +1,6 @@
 import { generateAPIUrl } from '@/utils';
 import { useChat } from '@ai-sdk/react';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DefaultChatTransport } from 'ai';
@@ -61,6 +61,7 @@ export default function Calendar() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isLongPress, setIsLongPress] = useState(false);
+  const [showLongPressMessage, setShowLongPressMessage] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const bottomSheetScrollRef = useRef<ScrollView>(null);
   const chatInputRef = useRef<TextInput>(null);
@@ -74,6 +75,7 @@ export default function Calendar() {
   const bottomSheetSlideAnim = useRef(new Animated.Value(0)).current;
   const bottomSheetDragY = useRef(new Animated.Value(0)).current;
   const eventActionSlideAnim = useRef(new Animated.Value(0)).current;
+  const longPressMessageFadeAnim = useRef(new Animated.Value(0)).current;
 
   // Chat functionality
   const { messages, sendMessage } = useChat({
@@ -852,8 +854,8 @@ export default function Calendar() {
             onPress={() => setShowAddBottomSheet(true)}
           >
             <View style={styles.navBarButtonContent}>
-              <Ionicons name="create-outline" size={20} color="#000000" />
-              <Text style={styles.navBarButtonText}>TEXT</Text>
+              <FontAwesome name="keyboard-o" size={24} color="black" />
+              <Text style={styles.navBarButtonText}>KEYBOARD</Text>
             </View>
           </TouchableOpacity>
 
@@ -861,9 +863,20 @@ export default function Calendar() {
           <TouchableOpacity 
             style={styles.navBarRecordingButton}
             onPress={() => {
-              if (!isLongPress) {
-                setShowAddBottomSheet(true);
-              }
+              // Show message with fade animation
+              setShowLongPressMessage(true);
+              longPressMessageFadeAnim.setValue(1);
+              
+              // Start fade out animation after a brief delay
+              setTimeout(() => {
+                Animated.timing(longPressMessageFadeAnim, {
+                  toValue: 0,
+                  duration: 2500, // 2.5 seconds
+                  useNativeDriver: true,
+                }).start(() => {
+                  setShowLongPressMessage(false);
+                });
+              }, 100); // Small delay to ensure message is visible before fading
             }}
             onLongPress={async () => {
               setIsLongPress(true);
@@ -891,6 +904,13 @@ export default function Calendar() {
             </View>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* Long Press Message */}
+      {showLongPressMessage && (
+        <Animated.View style={[styles.longPressMessage, { opacity: longPressMessageFadeAnim }]}>
+          <Text style={styles.longPressMessageText}>Long press to record</Text>
+        </Animated.View>
       )}
 
       {/* View Mode Navigation */}
@@ -1648,22 +1668,10 @@ export default function Calendar() {
                     isRecording && styles.bottomSheetRecordButtonActive
                   ]}
                   onPress={chatInput.trim() ? handleChatSend : undefined}
-                  onPressIn={!chatInput.trim() ? async () => {
-                    await startRecording();
-                  } : undefined}
-                  onPressOut={!chatInput.trim() && isRecording ? () => {
-                    stopRecording();
-                  } : undefined}
                   disabled={isTranscribing}
                 >
                   <Ionicons 
-                    name={
-                      isRecording 
-                        ? "mic" 
-                        : chatInput.trim() 
-                          ? "send" 
-                          : "mic-outline"
-                    } 
+                    name="checkmark" 
                     size={24} 
                     color="#FFFFFF"
                   />
@@ -2581,11 +2589,10 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#9DC8B9',
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#000000',
+    borderWidth: 0,
   },
   bottomSheetSendButtonActive: {
     backgroundColor: '#9DC8B9',
@@ -2688,6 +2695,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#000000',
+  },
+  longPressMessage: {
+    position: 'absolute',
+    bottom: 100, // Above the navigation bar
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  longPressMessageText: {
+    backgroundColor: '#000000',
+    color: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 
