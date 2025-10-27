@@ -279,6 +279,24 @@ export default function Calendar() {
     return today.getMonth() === currentMonth.getMonth() && today.getFullYear() === currentMonth.getFullYear();
   };
 
+  const isTodayVisibleInCurrentView = () => {
+    const today = new Date();
+    
+    switch (viewMode) {
+      case 'day':
+        return today.toDateString() === currentDay.toDateString();
+      case 'week':
+        const weekStart = new Date(currentWeekStart);
+        const weekEnd = new Date(currentWeekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        return today >= weekStart && today <= weekEnd;
+      case 'month':
+        return today.getMonth() === currentMonth.getMonth() && today.getFullYear() === currentMonth.getFullYear();
+      default:
+        return false;
+    }
+  };
+
   const weekDates = getWeekDates();
 
   // Load events from storage when component mounts or week changes
@@ -899,7 +917,11 @@ export default function Calendar() {
             onPress={goToCurrentDate}
           >
             <View style={styles.navBarButtonContent}>
-              <Ionicons name="calendar-outline" size={20} color="#000000" />
+              <FontAwesome 
+                name={isTodayVisibleInCurrentView() ? "calendar-check-o" : "calendar-o"} 
+                size={20} 
+                color="#000000" 
+              />
               <Text style={styles.navBarButtonText}>TODAY</Text>
             </View>
           </TouchableOpacity>
